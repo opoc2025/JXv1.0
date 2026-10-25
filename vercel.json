@@ -1,0 +1,11 @@
+{
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "pnpm next build",
+  "outputDirectory": ".next",
+  "build": {
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }
+}
