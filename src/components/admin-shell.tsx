@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -19,6 +20,8 @@ import {
   Wallet,
   Banknote,
   BarChart3,
+  LogOut,
+  UserCog,
 } from 'lucide-react';
 import { useMonth } from './month-context';
 
@@ -48,6 +51,19 @@ function shiftMonth(month: string, delta: number): string {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { month, setMonth } = useMonth();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (!confirm('确定要退出登录吗？')) return;
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
+  }
 
   return (
     <div className="flex min-h-screen bg-paper">
@@ -90,25 +106,48 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <div className="text-[13px] text-muted-foreground">
             财务/管理员后台 · 单角色操作
           </div>
-          <div className="flex items-center gap-2">
-            <span className="mr-1 text-[12.5px] text-muted-foreground">薪资月份</span>
-            <button
-              onClick={() => setMonth(shiftMonth(month, -1))}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted"
-              aria-label="上个月"
-            >
-              <ChevronLeft size={15} />
-            </button>
-            <div className="w-[92px] text-center font-mono text-[14px] font-semibold text-primary">
-              {month}
+          <div className="flex items-center gap-3">
+            {/* 月份选择 */}
+            <div className="flex items-center gap-2">
+              <span className="mr-1 text-[12.5px] text-muted-foreground">薪资月份</span>
+              <button
+                onClick={() => setMonth(shiftMonth(month, -1))}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted"
+                aria-label="上个月"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              <div className="w-[92px] text-center font-mono text-[14px] font-semibold text-primary">
+                {month}
+              </div>
+              <button
+                onClick={() => setMonth(shiftMonth(month, 1))}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted"
+                aria-label="下个月"
+              >
+                <ChevronRight size={15} />
+              </button>
             </div>
-            <button
-              onClick={() => setMonth(shiftMonth(month, 1))}
-              className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-muted"
-              aria-label="下个月"
-            >
-              <ChevronRight size={15} />
-            </button>
+
+            {/* 分隔线 */}
+            <div className="h-6 w-px bg-border" />
+
+            {/* 管理员 + 登出 */}
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500">
+                <UserCog size={12} className="text-white" />
+              </div>
+              <span className="text-[12px] font-medium text-slate-700">管理员</span>
+              <button
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="ml-1 flex h-6 items-center gap-1 rounded-md px-2 text-[11px] text-slate-500 transition-colors hover:bg-white hover:text-red-500 disabled:opacity-50"
+                title="退出登录"
+              >
+                <LogOut size={12} />
+                退出
+              </button>
+            </div>
           </div>
         </header>
         <main className="flex-1 px-6 py-6">{children}</main>
