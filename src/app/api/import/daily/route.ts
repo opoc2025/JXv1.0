@@ -179,7 +179,6 @@ interface DailyInput {
 interface ImportBody {
   batch_no?: string;
   rows?: DailyInput[];
-  replace?: boolean;
 }
 
 export async function POST(req: Request) {
@@ -229,10 +228,10 @@ export async function POST(req: Request) {
     amount_achievement_rate: r.amount_achievement_rate ?? null,
   }));
 
-  // ========== replace 模式说明 ==========
-  // 不按月份大删！直接靠下方 upsert (onConflict=employee_id,stage,date) 覆盖
-  // 先导 12-18 再 replace 导 1-11 → 1-11 覆盖同名行，12-18 保留 ✅
-  // 先导整个月再 replace 导全月 → 全月覆盖 ✅（因为 onConflict 自动匹配）
+  // ========== 导入策略 ==========
+  // 统一使用 upsert，唯一键 = (employee_id, stage, date)
+  // 新行自动插入，已存在的行覆盖更新——仅影响本次文件涉及的唯一键，
+  // 不会触碰其他日期或其他员工的旧数据。
 
   const { data, error } = await batchUpsert(client, 'import_daily_data', rows, {
     onConflict: 'employee_id,stage,date',

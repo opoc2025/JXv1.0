@@ -119,4 +119,4 @@ scripts/seed.ts                          # 种子：员工A-E + 规则 + 示例�
 - 员工导入：`/api/employees/import`（multipart `file`）按员工模板批量建档，逐行校验主阶段/参与阶段存在且启用，已存在工号跳过、缺主阶段/非法阶段记录失败行，成功同时重建 `employee_stage` 关联。
 - 结算 `detail` JSONB 结构：`scheme`（考核方案：底薪/绩效/groups 条件组明细及各自命中情况/是否达标）+ `stages`（各阶段日提成与方案B）+ `monthly_total`（方案A）。每组含 `conditions`（metric/operator/metric_value/passed/range_text）与 `passed`。
 - 已终审(FINALIZED)结算在重新核算时自动跳过，防止覆盖。
-- Excel 导入严格依赖模板列名；同批次可选择先删后导（replace）。
+- Excel 导入严格依赖模板列名；日数据导入统一使用 upsert（唯一键 `employee_id + stage + date`），新行自动插入、已存在行覆盖更新，不触碰文件外的旧数据。月度数据同理（唯一键 `month + employee_id + stage`）。

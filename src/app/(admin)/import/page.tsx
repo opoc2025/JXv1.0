@@ -1,14 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, UploadCloud, Trash2, FileSpreadsheet, CalendarDays, RotateCcw } from 'lucide-react';
+import { Download, UploadCloud, Trash2, FileSpreadsheet, CalendarDays, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,8 +61,12 @@ export default function ImportPage() {
   const [batches, setBatches] = useState<BatchInfo[]>([]);
   // 当前导入月份（独立于全局月份——导入的数据日期可能跨月，但我们用它标记批次）
   const [importMonth, setImportMonth] = useState(month);
-  const [replaceMode, setReplaceMode] = useState(false); // 先删后导
-  const [confirmReplaceOpen, setConfirmReplaceOpen] = useState(false); // 替换确认弹窗
+
+  // 日期范围删除
+  const [delFrom, setDelFrom] = useState('');
+  const [delTo, setDelTo] = useState('');
+  const [delDialogOpen, setDelDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadBatches = useCallback(async () => {
     const res = await fetch('/api/batches', { cache: 'no-store' });
@@ -123,20 +126,8 @@ export default function ImportPage() {
       return;
     }
 
-    // 替换模式：先删再导
-    if (replaceMode) {
-      // 等 AlertDialog 确认后再执行——这里只打开弹窗
-      setConfirmReplaceOpen(true);
-      // 把要提交的数据临时存一下（用 ref 太麻烦，闭包里直接提交）
-      // 简化：替换逻辑在确认回调里做
-      pendingDailyImportRef.current = { rows };
-      return;
-    }
-
     void doImportDaily(rows);
   };
-
-  const pendingDailyImportRef = useRef<{ rows: any[] } | null>(null);
 
   const doImportDaily = async (rows: any[]) => {
     setImporting(true);
@@ -144,7 +135,7 @@ export default function ImportPage() {
     const res = await fetch('/api/import/daily', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ batch_no: batchNo, replace: replaceMode, rows }),
+      body: JSON.stringify({ batch_no: batchNo, rows }),
     });
     const json = await res.json();
     setImporting(false);
@@ -159,39 +150,10 @@ export default function ImportPage() {
       toast.success(msg);
       setDailyParsed(null);
       setDailyFileName('');
-      setReplaceMode(false);
       void loadBatches();
     } else {
       toast.error(json.error ?? '导入失败');
     }
-  };
-
-  const confirmReplaceAndImport = async () => {
-    setConfirmReplaceOpen(false);
-    const pending = pendingDailyImportRef.current;
-    pendingDailyImportRef.current = null;
-    if (!pending) return;
-
-    // 1. 先清当月旧日数据（调后端 API，REST 可直接调用）
-    const [year, mon] = importMonth.split('-').map(Number);
-    const nextMon = mon === 12 ? 1 : mon + 1;
-    const nextYear = mon === 12 ? year + 1 : year;
-    const rangeStart = `${importMonth}-01`;
-    const rangeEnd = `${nextYear}-${String(nextMon).padStart(2, '0')}-01`;
-
-    const delRes = await fetch(
-      `/api/import/daily?from=${encodeURIComponent(rangeStart)}&to=${encodeURIComponent(rangeEnd)}`,
-      { method: 'DELETE' }
-    );
-    const delJson = await delRes.json();
-    if (!delJson.success) {
-      toast.error(`清理旧数据失败: ${delJson.error}`);
-      return;
-    }
-    toast.success(`已清空 ${rangeStart} ~ ${rangeEnd} 的 ${delJson.data?.deleted ?? 0} 行旧数据`);
-
-    // 2. 再导入新数据
-    await doImportDaily(pending.rows);
   };
 
   const submitMonthly = async () => {
@@ -240,6 +202,43 @@ export default function ImportPage() {
     }
   };
 
+  const openDelDialog = () => {
+    if (!delFrom || !delTo) {
+      toast.error('请先选择起止日期');
+      return;
+    }
+    if (delFrom > delTo) {
+      toast.error('起始日期不能晚于结束日期');
+      return;
+    }
+    setDelDialogOpen(true);
+  };
+
+  const confirmDeleteRange = async () => {
+    setDelDialogOpen(false);
+    setDeleting(true);
+    // 后端接口: DELETE /api/import/daily?from=YYYY-MM-DD&to=YYYY-MM-DD
+    // 语义: >= from 且 < to+1 （即闭区间 [from, to]）
+    const nextDay = new Date(delTo);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const toExclusive = nextDay.toISOString().slice(0, 10);
+
+    const res = await fetch(
+      `/api/import/daily?from=${encodeURIComponent(delFrom)}&to=${encodeURIComponent(toExclusive)}`,
+      { method: 'DELETE' }
+    );
+    const json = await res.json();
+    setDeleting(false);
+    if (json.success) {
+      toast.success(`已删除 ${json.data?.deleted ?? 0} 行日数据 (${delFrom} ~ ${delTo})`);
+      setDelFrom('');
+      setDelTo('');
+      void loadBatches();
+    } else {
+      toast.error(json.error ?? '删除失败');
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -273,21 +272,6 @@ export default function ImportPage() {
                 className="h-9 w-[150px]"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="replace-mode"
-                checked={replaceMode}
-                onCheckedChange={(v) => setReplaceMode(Boolean(v))}
-              />
-              <label htmlFor="replace-mode" className="text-[13px] text-muted-foreground cursor-pointer">
-                先删后导（清空该月旧数据）
-              </label>
-            </div>
-            {replaceMode && (
-              <span className="text-[11.5px] text-vermilion">
-                ⚠ 将删除 {importMonth} 范围内所有日数据，不可恢复
-              </span>
-            )}
           </div>
 
           <div className="flex gap-2">
@@ -345,6 +329,46 @@ export default function ImportPage() {
               />
             </div>
           )}
+
+          {/* 日期范围删除 */}
+          <div className="rounded-md border border-red-200 bg-red-50/60">
+            <div className="flex items-center gap-2 border-b border-red-200 px-4 py-2.5 text-[13.5px] font-semibold text-red-700">
+              <AlertTriangle size={14} />
+              数据清理（日数据）
+            </div>
+            <div className="flex flex-wrap items-end gap-3 p-4">
+              <div className="space-y-1">
+                <Label className="text-[12.5px] text-muted-foreground">起始日期</Label>
+                <Input
+                  type="date"
+                  value={delFrom}
+                  onChange={(e) => setDelFrom(e.target.value)}
+                  className="h-9 w-[160px]"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[12.5px] text-muted-foreground">结束日期</Label>
+                <Input
+                  type="date"
+                  value={delTo}
+                  onChange={(e) => setDelTo(e.target.value)}
+                  className="h-9 w-[160px]"
+                />
+              </div>
+              <Button
+                variant="destructive"
+                onClick={openDelDialog}
+                disabled={deleting}
+                className="h-9"
+              >
+                <Trash2 size={14} />
+                删除该范围数据
+              </Button>
+              <span className="text-[11.5px] text-red-600">
+                ⚠ 永久删除指定日期范围内的所有每日运营数据，不可恢复
+              </span>
+            </div>
+          </div>
 
           {/* 批次历史 */}
           <div className="rounded-md border border-border bg-white">
@@ -590,24 +614,24 @@ export default function ImportPage() {
         </TabsContent>
       </Tabs>
 
-      {/* 替换模式确认弹窗 */}
-      <AlertDialog open={confirmReplaceOpen} onOpenChange={setConfirmReplaceOpen}>
+      {/* 日期范围删除确认弹窗 */}
+      <AlertDialog open={delDialogOpen} onOpenChange={setDelDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认清空 {importMonth} 日数据？</AlertDialogTitle>
+            <AlertDialogTitle>确认删除日数据？</AlertDialogTitle>
             <AlertDialogDescription>
-              将先删除 <strong>{importMonth}</strong> 范围内所有已导入的每日运营数据，
-              再导入本次 Excel（共 {dailyParsed?.rows.length ?? 0} 行）。此操作不可恢复。
+              将永久删除 <strong>{delFrom}</strong> 至 <strong>{delTo}</strong> 范围内
+              <strong>所有</strong>每日运营数据（覆盖所有员工、所有阶段）。此操作不可恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => void confirmReplaceAndImport()}
-              className="bg-vermilion hover:bg-vermilion/90"
+              onClick={() => void confirmDeleteRange()}
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={deleting}
             >
-              <RotateCcw size={14} className="mr-1" />
-              确认清空并导入
+              {deleting ? '删除中...' : '确认删除'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
