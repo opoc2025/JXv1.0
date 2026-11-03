@@ -73,10 +73,15 @@ export async function GET(req: Request) {
 
   const result = (rules ?? []).map((r) => {
     const rid = (r as { rule_id: number }).rule_id;
+    const tiers = byRule.get(rid) ?? [];
+    const conditionGroups = byRuleGroups.get(rid) ?? [];
     return {
       ...(r as object),
-      rule_tier_detail: byRule.get(rid) ?? [],
-      salary_condition_group: byRuleGroups.get(rid) ?? [],
+      tiers,
+      condition_groups: conditionGroups,
+      // 兼容旧字段名（奖励计划模块等仍在使用）
+      rule_tier_detail: tiers,
+      salary_condition_group: conditionGroups,
     };
   });
 

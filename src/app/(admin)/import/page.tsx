@@ -214,14 +214,27 @@ export default function ImportPage() {
     setDelDialogOpen(true);
   };
 
+  // 手动 +1 天，完全不依赖 Date 对象避免 toISOString 时区错位
+  function addOneDay(dateStr: string): string {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate(); // 本月天数
+    if (d < daysInMonth) {
+      return `${y}-${String(m).padStart(2, '0')}-${String(d + 1).padStart(2, '0')}`;
+    }
+    // 月末进位
+    if (m < 12) {
+      return `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    }
+    // 年末进位
+    return `${y + 1}-01-01`;
+  }
+
   const confirmDeleteRange = async () => {
     setDelDialogOpen(false);
     setDeleting(true);
-    // 后端接口: DELETE /api/import/daily?from=YYYY-MM-DD&to=YYYY-MM-DD
-    // 语义: >= from 且 < to+1 （即闭区间 [from, to]）
-    const nextDay = new Date(delTo);
-    nextDay.setDate(nextDay.getDate() + 1);
-    const toExclusive = nextDay.toISOString().slice(0, 10);
+    // 后端语义: date >= from AND date < to（半开区间）
+    // 用户选闭区间 [delFrom, delTo]，所以把 toExclusive = delTo + 1 天
+    const toExclusive = addOneDay(delTo);
 
     const res = await fetch(
       `/api/import/daily?from=${encodeURIComponent(delFrom)}&to=${encodeURIComponent(toExclusive)}`,
