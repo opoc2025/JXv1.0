@@ -470,6 +470,9 @@ export function calculateRewards(input: RewardEngineInput): RewardEngineOutput {
 
 				const matchingRules = findMatchingRules(deptName, virtualStage, "DAILY_REWARD_TIER");
 
+				// === 日奖励：没有匹配到任何规则的阶段不产生空壳结算 ===
+				if (matchingRules.length === 0) continue;
+
 				let totalReward = 0;
 				let allMatches: RewardTierMatch[] = [];
 				const rowKey = `${empId}|${virtualStage}|${date}`;
@@ -560,6 +563,9 @@ export function calculateRewards(input: RewardEngineInput): RewardEngineOutput {
 				};
 
 				const matchingRules = findMatchingRules(deptName, virtualStage, "WEEKLY_REWARD_TIER");
+
+				// === 周奖励：没有匹配到任何规则的阶段不产生空壳结算 ===
+				if (matchingRules.length === 0) continue;
 
 				let totalReward = 0;
 				let allMatches: RewardTierMatch[] = [];
