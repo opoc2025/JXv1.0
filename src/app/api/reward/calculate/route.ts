@@ -4,6 +4,30 @@ import { calculateRewards } from "@/lib/reward-engine";
 
 export const dynamic = "force-dynamic";
 
+/** 计算 [from, to] 日期范围内涉及的所有 ISO 周（如 2026-W44） */
+function collectISOWeeks(from: string, to: string): string[] {
+	const start = new Date(from + "T00:00:00");
+	const end = new Date(to + "T00:00:00");
+	const seen = new Set<string>();
+	for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+		// 本地时区安全版 ISO 周计算
+		const jan4 = new Date(d.getFullYear(), 0, 4);
+		const jan4Day = jan4.getDay() || 7;
+		const monday = new Date(jan4);
+		monday.setDate(jan4.getDate() - jan4Day + 1);
+		const daysDiff = Math.floor((d.getTime() - monday.getTime()) / 86400000);
+		const year = daysDiff < 0 ? d.getFullYear() - 1 : d.getFullYear();
+		const jan4New = new Date(year, 0, 4);
+		const jan4NewDay = jan4New.getDay() || 7;
+		const yearMonday = new Date(jan4New);
+		yearMonday.setDate(jan4New.getDate() - jan4NewDay + 1);
+		const offset = Math.floor((d.getTime() - yearMonday.getTime()) / 86400000);
+		const weekNum = Math.floor(offset / 7) + 1;
+		seen.add(`${year}-W${String(weekNum).padStart(2, "0")}`);
+	}
+	return [...seen];
+}
+
 /**
  * 一键核算日/周奖励
  * 数据源：import_daily_data（复用现有日业务数据）
@@ -128,50 +152,43 @@ export async function POST(req: Request) {
 			empGroupNames,
 		});
 
-		// 8. 覆盖写入结算表 — 精确删除该部门/员工的旧结算
+		// 8. 覆盖写入结算表 —— 按日期范围清掉该期间所有旧结算（含孤儿），再 upsert 新结果
+		// 原逻辑只清新结果里出现的 key，日数据删除后会留下孤儿结算
 		if (overwrite) {
-			// 按 employee_id + period + period_key 三元组精确删
-			// 否则指定部门核算时会误删其他部门同日期的结算！
-			const allKeys = [
-				...result.dailySettlements.map((s) => ({
-					period: "DAILY" as const,
-					key: s.period_key,
-					empId: s.employee_id,
-				})),
-				...result.weeklySettlements.map((s) => ({
-					period: "WEEKLY" as const,
-					key: s.period_key,
-					empId: s.employee_id,
-				})),
-			];
-			// 去重（同一员工同一天可能多条不同 rule 结算）
-			const uniqueKeys = new Set<string>();
-			for (const k of allKeys) uniqueKeys.add(`${k.empId}|${k.period}|${k.key}`);
-			// 分批删（每批 200）
-			const arr = [...uniqueKeys].map((k) => {
-				const [empId, period, key] = k.split("|");
-				return { empId, period: period as "DAILY" | "WEEKLY", key };
-			});
-			const BATCH = 200;
-			for (let i = 0; i < arr.length; i += BATCH) {
-				const batch = arr.slice(i, i + BATCH);
-				let q = supabase.from("weekly_reward_settlement").delete();
-				for (let j = 0; j < batch.length; j++) {
-					const k = batch[j];
-					// Supabase .or() 链式多条件删除
-					if (j === 0) {
-						q = q
-							.eq("employee_id", k.empId)
-							.eq("period", k.period)
-							.eq("period_key", k.key);
-					} else {
-						q = q.or(
-							`(employee_id.eq.${k.empId},period.eq.${k.period},period_key.eq.${k.key})`
-						);
+			// 8a. 清日结算：period_key 是日期，直接范围比较
+			let dailyDelQuery = supabase
+				.from("weekly_reward_settlement")
+				.delete()
+				.eq("period", "DAILY")
+				.gte("period_key", from)
+				.lte("period_key", to);
+			if (dept) dailyDelQuery = dailyDelQuery.eq("dept_name", dept);
+			const dailyDel = await dailyDelQuery;
+
+			// 8b. 清周结算：period_key 是 ISO 周（如 2026-W44）
+			// 算出 [from, to] 范围内涉及的所有 ISO 周，逐个精确删
+			const isoWeeks = collectISOWeeks(from, to);
+			let weeklyDeleted = 0;
+			if (isoWeeks.length > 0) {
+				// 分批删，每批 50 个 ISO 周
+				const BATCH = 50;
+				for (let i = 0; i < isoWeeks.length; i += BATCH) {
+					const batch = isoWeeks.slice(i, i + BATCH);
+					let q = supabase
+						.from("weekly_reward_settlement")
+						.delete()
+						.eq("period", "WEEKLY")
+						.eq("period_key", batch[0]);
+					for (let j = 1; j < batch.length; j++) {
+						q = q.or(`period_key.eq.${batch[j]}`);
 					}
+					if (dept) q = q.eq("dept_name", dept);
+					const r = await q;
+					weeklyDeleted += r.count ?? 0;
 				}
-				await q;
 			}
+			// 复用 dailyDel 也没关系，只是给个提示
+			void dailyDel;
 		}
 
 		const toInsert: any[] = [
