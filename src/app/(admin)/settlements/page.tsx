@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Calculator, FileDown, Eye, BadgeCheck, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Calculator, FileDown, Eye, BadgeCheck, Trash2, CheckCircle2, AlertTriangle, Database } from 'lucide-react';
+import { ImportCheckDialog } from '@/components/import-check-dialog';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +70,14 @@ export default function SettlementsPage() {
   const [drawerRow, setDrawerRow] = useState<Row | null>(null);
   const [finalizing, setFinalizing] = useState<Row | null>(null);
   const [deptFilter, setDeptFilter] = useState<string>('ALL');
+  const [checkOpen, setCheckOpen] = useState(false);
+
+  // 从 month 算 from/to（半开区间）
+  const [year, mon] = month.split('-').map(Number);
+  const nextMon = mon === 12 ? 1 : mon + 1;
+  const nextYear = mon === 12 ? year + 1 : year;
+  const checkFrom = `${month}-01`;
+  const checkTo = `${nextYear}-${String(nextMon).padStart(2, '0')}-01`;
 
   const deptOptions = Array.from(new Set(rows.map((r) => r.employee?.department).filter(Boolean) as string[]))
     .sort((a,b) => a.localeCompare(b,'zh'));
@@ -344,6 +353,14 @@ export default function SettlementsPage() {
             <CheckCircle2 size={15} className="text-teal-600" />
             {verifying ? '核对中...' : '一键核对'}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setCheckOpen(true)}
+            title="检查数据导入完整度"
+          >
+            <Database size={15} className="text-indigo-600" />
+            数据检查
+          </Button>
           <Button variant="outline" onClick={handleExport} disabled={rows.length === 0}>
             <FileDown size={15} />
             导出薪资汇总表
@@ -588,6 +605,14 @@ export default function SettlementsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ImportCheckDialog
+        open={checkOpen}
+        onOpenChange={setCheckOpen}
+        from={checkFrom}
+        to={checkTo}
+        dept={deptFilter !== 'ALL' ? deptFilter : undefined}
+      />
     </div>
   );
 }

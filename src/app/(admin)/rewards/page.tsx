@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { useMonth } from "@/components/month-context";
 import { formatTHB } from "@/lib/format";
+import { Database } from "lucide-react";
+import { ImportCheckDialog } from "@/components/import-check-dialog";
 import {
 	Table,
 	TableBody,
@@ -86,9 +88,34 @@ export default function RewardsPage() {
 	// 核算范围选择
 	const [calcScope, setCalcScope] = useState<"MONTH" | "WEEK">("MONTH");
 	const [calcWeek, setCalcWeek] = useState<string>("");
+	const [checkOpen, setCheckOpen] = useState(false);
 
 	// 算出当前月有哪些周，默认选最新一周
 	const weeks = useMemo(() => getWeeksInMonth(month), [month]);
+
+	// 数据检查的 from/to（和 handleCalculate 保持一致）
+	const checkFrom = useMemo(() => {
+		if (calcScope === "WEEK" && calcWeek) {
+			const w = weeks.find((x) => x.weekIso === calcWeek);
+			return w ? w.dates[0] : `${month}-01`;
+		}
+		return `${month}-01`;
+	}, [calcScope, calcWeek, weeks, month]);
+	const checkTo = useMemo(() => {
+		if (calcScope === "WEEK" && calcWeek) {
+			const w = weeks.find((x) => x.weekIso === calcWeek);
+			// 半开区间：周日 +1 天 = 下周一
+			if (!w) return month;
+			const last = new Date(w.dates[6] + "T00:00:00");
+			last.setDate(last.getDate() + 1);
+			return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
+		}
+		const [y, m] = month.split("-").map(Number);
+		const nextM = m === 12 ? 1 : m + 1;
+		const nextY = m === 12 ? y + 1 : y;
+		return `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+	}, [calcScope, calcWeek, weeks, month]);
+
 	useEffect(() => {
 		if (tab === "report" && weeks.length > 0 && !selectedWeek) {
 			setSelectedWeek(weeks[weeks.length - 1].weekIso);
@@ -357,6 +384,14 @@ export default function RewardsPage() {
 						</div>
 
 						<div className="flex gap-3">
+							<button
+								onClick={() => setCheckOpen(true)}
+								className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-4 py-2 text-[13px] font-medium text-indigo-600 hover:bg-indigo-50 transition-colors"
+								title="检查数据导入完整度"
+							>
+								<Database size={15} />
+								数据检查
+							</button>
 							<button
 								onClick={handleCalculate}
 								disabled={calculating || (calcScope === "WEEK" && !calcWeek)}
@@ -738,6 +773,14 @@ export default function RewardsPage() {
 					)}
 				</div>
 			)}
+
+			<ImportCheckDialog
+				open={checkOpen}
+				onOpenChange={setCheckOpen}
+				from={checkFrom}
+				to={checkTo}
+				dept={deptFilter !== "ALL" ? deptFilter : undefined}
+			/>
 		</div>
 	);
 }
