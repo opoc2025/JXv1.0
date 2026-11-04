@@ -179,9 +179,14 @@ export async function GET(req: Request) {
       return a.employee_id.localeCompare(b.employee_id);
     });
 
+    // 算显示用的闭区间 to（半开区间 [from, to) 内部转成 [from, displayTo] 展示）
+    const toDateForDisplay = new Date(to + 'T00:00:00');
+    toDateForDisplay.setDate(toDateForDisplay.getDate() - 1);
+    const displayTo = `${toDateForDisplay.getFullYear()}-${String(toDateForDisplay.getMonth() + 1).padStart(2, '0')}-${String(toDateForDisplay.getDate()).padStart(2, '0')}`;
+
     const report: CheckReport = {
       from,
-      to,
+      to: displayTo,
       total_days: expectedDays,
       total_rows: allDaily.length,
       employee_count: emps?.length ?? 0,
