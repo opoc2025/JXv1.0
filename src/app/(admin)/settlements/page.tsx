@@ -399,7 +399,7 @@ export default function SettlementsPage() {
             {formatTHB(baseTotal)} ฿
           </div>
           <div className="mt-1 text-[11px] text-muted-foreground">
-            实发底薪 {formatTHB(colSums.actualBase)} + 绩效 {formatTHB(colSums.perf)} + 全勤 {formatTHB(colSums.bonus)}
+            实发底薪 {formatTHB(colSums.actualBase)} + 实发绩效 {formatTHB(colSums.perf)} + 全勤 {formatTHB(colSums.bonus)}
           </div>
         </div>
         <div className="rounded-md border border-border bg-white p-3">
@@ -425,7 +425,7 @@ export default function SettlementsPage() {
           <div className="mt-1 text-lg font-semibold font-mono">{formatTHB(colSums.actualBase)} ฿</div>
         </div>
         <div className="rounded-md border border-border bg-white p-3">
-          <div className="text-[12px] text-muted-foreground">月度绩效</div>
+          <div className="text-[12px] text-muted-foreground">实发绩效</div>
           <div className="mt-1 text-lg font-semibold font-mono">{formatTHB(colSums.perf)} ฿</div>
         </div>
         <div className="rounded-md border border-border bg-white p-3">
@@ -442,8 +442,8 @@ export default function SettlementsPage() {
               <TableHead className="h-10 px-3">姓名</TableHead>
               <TableHead className="h-10 px-3">团队</TableHead>
               <TableHead className="h-10 px-3">阶段</TableHead>
-              <TableHead className="h-10 px-3 text-right">底薪</TableHead>
-              <TableHead className="h-10 px-3 text-right">月度绩效</TableHead>
+              <TableHead className="h-10 px-3 text-right">底薪(方案)</TableHead>
+              <TableHead className="h-10 px-3 text-right">实发绩效</TableHead>
               <TableHead className="h-10 px-3 text-right">实发底薪</TableHead>
               <TableHead className="h-10 px-3 text-right">全勤奖</TableHead>
               <TableHead className="h-10 px-3 text-right">日提成</TableHead>

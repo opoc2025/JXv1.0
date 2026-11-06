@@ -298,6 +298,7 @@ export interface SalaryAdjustment {
   month: string; // YYYY-MM
   employee_id: string;
   actual_base_salary: number;
+  actual_performance_bonus: number;
   full_attendance_bonus: number;
   remark?: string | null;
   batch_id?: number | null;

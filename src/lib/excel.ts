@@ -136,7 +136,7 @@ export function exportSettlement(month: string, rows: ExportSettlementRow[]): vo
     '团队/部门',
     '默认阶段',
     '固定底薪 (฿)',
-    '月度绩效工资 (฿)',
+    '实发绩效 (฿)',
     '实发底薪 (฿)',
     '全勤奖 (฿)',
     '日达成提成 (฿)',

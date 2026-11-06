@@ -15,6 +15,12 @@ const HEADER_MAP: Record<string, string> = {
   底薪: 'actual_base_salary',
   actual_base_salary: 'actual_base_salary',
   base: 'actual_base_salary',
+  实发绩效: 'actual_performance_bonus',
+  绩效: 'actual_performance_bonus',
+  实发绩效工资: 'actual_performance_bonus',
+  actual_performance_bonus: 'actual_performance_bonus',
+  performance_bonus: 'actual_performance_bonus',
+  bonus: 'actual_performance_bonus',
   全勤奖: 'full_attendance_bonus',
   全勤: 'full_attendance_bonus',
   full_attendance_bonus: 'full_attendance_bonus',
@@ -117,11 +123,16 @@ export async function POST(request: Request) {
         return;
       }
       numify(r, ['actual_base_salary', 'actual_base', 'base', '实发底薪', '底薪']);
+      numify(r, ['actual_performance_bonus', 'performance_bonus', 'bonus', '实发绩效', '绩效', '实发绩效工资']);
       numify(r, ['full_attendance_bonus', 'attendance_bonus', '全勤奖', '全勤']);
+      // 绩效没填则传 null（引擎保留方案计算值）
+      const rawPerf = r.actual_performance_bonus ?? r.performance_bonus ?? r.bonus ?? r['实发绩效'] ?? r['绩效'] ?? r['实发绩效工资'];
+      const perfValue = rawPerf === '' || rawPerf === undefined || rawPerf === null ? null : Number(rawPerf);
       toInsert.push({
         month: monthNorm,
         employee_id,
         actual_base_salary: r.actual_base_salary ?? r.actual_base ?? r.base ?? r['实发底薪'] ?? r['底薪'] ?? 0,
+        actual_performance_bonus: perfValue,
         full_attendance_bonus: r.full_attendance_bonus ?? r.attendance_bonus ?? r['全勤奖'] ?? r['全勤'] ?? 0,
         remark: r.remark ?? r['备注'] ?? r.note ?? null,
         batch_id,

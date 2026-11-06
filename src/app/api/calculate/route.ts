@@ -149,16 +149,17 @@ export async function POST(req: Request) {
     schemeMap.set(scheme.dept_name, scheme);
   });
 
-  // 薪酬调整（实发底薪 + 全勤奖）
+  // 薪酬调整（实发底薪 + 实发绩效 + 全勤奖）
   const { data: adjRows, error: adjErr } = await client
     .from('salary_adjustment')
-    .select('employee_id,actual_base_salary,full_attendance_bonus')
+    .select('employee_id,actual_base_salary,actual_performance_bonus,full_attendance_bonus')
     .eq('month', month);
   if (adjErr) return fail(`查询薪酬调整失败: ${adjErr.message}`, 500);
-  const adjMap = new Map<string, { actual_base_salary: number; full_attendance_bonus: number }>();
+  const adjMap = new Map<string, { actual_base_salary: number; actual_performance_bonus: number; full_attendance_bonus: number }>();
   (adjRows ?? []).forEach((r: any) => {
     adjMap.set(r.employee_id, {
       actual_base_salary: Number(r.actual_base_salary ?? 0),
+      actual_performance_bonus: Number(r.actual_performance_bonus ?? 0),
       full_attendance_bonus: Number(r.full_attendance_bonus ?? 0),
     });
   });

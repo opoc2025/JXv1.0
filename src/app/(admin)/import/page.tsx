@@ -529,12 +529,12 @@ export default function ImportPage() {
         {/* ---------- 薪酬调整 ---------- */}
         <TabsContent value="adjustment" className="space-y-4">
           <div className="rounded-md border border-border/60 bg-muted/40 p-3 text-[12.5px] text-muted-foreground">
-            <strong>薪酬调整 = 实发底薪 + 全勤奖</strong>
+            <strong>薪酬调整 = 实发底薪 + 实发绩效 + 全勤奖</strong>
             <ul className="mt-2 list-disc pl-5 space-y-0.5">
               <li>每个员工每月可导入一次，系统会<strong>覆盖</strong>同月之前的调整记录</li>
-              <li>导入后重新核算，引擎会用<strong>实发底薪</strong>替换方案中的固定底薪</li>
+              <li>导入后重新核算，引擎会用<strong>实发底薪/实发绩效</strong>替换方案中的固定底薪/绩效工资</li>
               <li><strong>全勤奖</strong>独立发放（无迟到/请假则填金额，否则填 0）</li>
-              <li>未导入的员工保持原有底薪不变（向后兼容）</li>
+              <li>未导入的员工保持原有底薪/绩效不变（向后兼容）</li>
             </ul>
           </div>
 
@@ -550,9 +550,9 @@ export default function ImportPage() {
               size="sm"
               onClick={async () => {
                 const ws = XLSX.utils.aoa_to_sheet([
-                  ['工号', '月份', '实发底薪', '全勤奖', '备注'],
-                  ['X2P-2609-Ter', importMonth, 6500, 0, '迟到扣款500'],
-                  ['X2P-LW-202508-Nee', importMonth, 7000, 500, '全勤'],
+                  ['工号', '月份', '实发底薪', '实发绩效', '全勤奖', '备注'],
+                  ['X2P-2609-Ter', importMonth, 6500, 2000, 0, '迟到扣款500'],
+                  ['X2P-LW-202508-Nee', importMonth, 7000, 3000, 500, '全勤'],
                 ]);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, '薪酬调整');
@@ -566,7 +566,7 @@ export default function ImportPage() {
           <div className="rounded-md border border-border/60 bg-card/50 p-4 space-y-3">
             <div className="text-[13px] font-semibold">导入薪酬调整 Excel</div>
             <div className="text-[12.5px] text-muted-foreground">
-              表头支持中文：<code>工号、月份、实发底薪、全勤奖、备注</code>
+              表头支持中文：<code>工号、月份、实发底薪、实发绩效、全勤奖、备注</code>
             </div>
             <div className="flex items-center gap-2">
               <input

@@ -339,7 +339,7 @@ export const employeeStageGroup = pgTable(
 	]
 );
 
-// 12. 薪酬调整表（实发底薪 + 全勤奖，月度覆盖导入）
+// 12. 薪酬调整表（实发底薪 + 实发绩效 + 全勤奖，月度覆盖导入）
 export const salaryAdjustment = pgTable(
 	"salary_adjustment",
 	{
@@ -347,6 +347,7 @@ export const salaryAdjustment = pgTable(
 		month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
 		employee_id: varchar("employee_id", { length: 32 }).notNull().references(() => employee.employee_id, { onDelete: "cascade" }),
 		actual_base_salary: numeric("actual_base_salary", { precision: 14, scale: 2 }).notNull().default(sql`0`),
+		actual_performance_bonus: numeric("actual_performance_bonus", { precision: 14, scale: 2 }),
 		full_attendance_bonus: numeric("full_attendance_bonus", { precision: 14, scale: 2 }).notNull().default(sql`0`),
 		remark: varchar("remark", { length: 500 }),
 		batch_id: integer("batch_id"),

@@ -281,6 +281,7 @@ export interface EngineInput {
   stageGroups?: StageGroup[]; // 全局阶段合并组定义（可选）
   adjustment?: { // 薪酬调整（可选，导入覆盖用）
     actual_base_salary: number;
+    actual_performance_bonus: number;
     full_attendance_bonus: number;
   } | null;
 }
@@ -360,17 +361,24 @@ export function calculateSalary(input: EngineInput): Settlement {
     };
   }
 
-  // ---- 薪酬调整覆盖（实发底薪 + 全勤奖） ----
+  // ---- 薪酬调整覆盖（实发底薪 + 实发绩效 + 全勤奖） ----
+  // adjustment 只覆盖员工显式填写过的字段；null = 保留方案/引擎计算值
   let actualBaseSalary = baseSalary;
+  let actualPerformanceBonus = performanceBonus;
   let fullAttendanceBonus = 0;
   if (adjustment) {
-    actualBaseSalary = round2(adjustment.actual_base_salary);
-    fullAttendanceBonus = round2(adjustment.full_attendance_bonus);
+    actualBaseSalary = round2(adjustment.actual_base_salary ?? baseSalary);
+    actualPerformanceBonus =
+      adjustment.actual_performance_bonus != null
+        ? round2(adjustment.actual_performance_bonus)
+        : performanceBonus;
+    fullAttendanceBonus = round2(adjustment.full_attendance_bonus ?? 0);
   }
-  // schemeDetail 里也补 actual_base + full_attendance
+  // schemeDetail 里也同步
   if (schemeDetail) {
     schemeDetail.actual_base_salary = actualBaseSalary;
     schemeDetail.full_attendance_bonus = fullAttendanceBonus;
+    schemeDetail.performance_bonus = actualPerformanceBonus;
   }
 
   // ---- 阶段集合 ----
@@ -719,7 +727,7 @@ export function calculateSalary(input: EngineInput): Settlement {
   const planATotal = employee.commission_plan === 'A' ? monthlyTotalCommission : 0;
 
   const total = round2(
-    actualBaseSalary + fullAttendanceBonus + performanceBonus + dailyTotal + planATotal + stageTierTotal + progressiveCommission
+    actualBaseSalary + fullAttendanceBonus + actualPerformanceBonus + dailyTotal + planATotal + stageTierTotal + progressiveCommission
   );
 
   const monthlySummary = monthlyRows.map((r) => ({
@@ -742,7 +750,7 @@ export function calculateSalary(input: EngineInput): Settlement {
     employee_id: employee.employee_id,
     stage: defaultStage,
     base_salary: baseSalary,
-    monthly_performance_bonus: performanceBonus,
+    monthly_performance_bonus: actualPerformanceBonus,
     daily_commission: dailyTotal,
     monthly_total_commission: planATotal,
     stage_tier_commission: stageTierTotal,
