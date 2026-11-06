@@ -185,9 +185,10 @@ export default function SettlementsPage() {
       const dailyRows = (dailyRes.data ?? []) as any[];
       const settledRows = (settledRes.data ?? []) as any[];
 
-      const dailySet = new Set(dailyRows.map((d: any) => `${d.employee_id}|${d.stage}`));
-      const settledSet = new Set(settledRows.map((s: any) => `${s.employee_id}|${s.stage}`));
+      // ⚠ 薪酬结算是一员工一行（salary_settlement_result 没有 stage 字段）
+      // 所以比对键只用 employee_id，不能带 stage
       const dailyEmps = new Set(dailyRows.map((d: any) => d.employee_id));
+      const settledEmps = new Set(settledRows.map((s: any) => s.employee_id));
 
       // 只看在职员工
       const activeEmps = allEmps.filter((e: any) => e.status !== 'inactive');
@@ -197,32 +198,35 @@ export default function SettlementsPage() {
       const orphan_settlement: VerifyItem[] = [];
       const no_daily_data: VerifyItem[] = [];
 
-      dailySet.forEach((key) => {
-        const [eid, stage] = key.split('|');
-        if (!settledSet.has(key)) {
+      // 有日数据但没结算（按员工）
+      dailyEmps.forEach((eid) => {
+        if (!settledEmps.has(eid)) {
+          // 收集该员工涉及的所有 stage（用于展示）
+          const stages = [...new Set(dailyRows.filter((d: any) => d.employee_id === eid).map((d: any) => d.stage))];
           missing_settlement.push({
             employee_id: eid,
             name: nameMap.get(eid) ?? '-',
-            stage,
-            daily_rows: 0,
+            stage: stages.join(', '),
+            daily_rows: stages.length,
             issue: '有日数据但未核算',
           });
         }
       });
 
-      settledSet.forEach((key) => {
-        const [eid, stage] = key.split('|');
-        if (!dailySet.has(key)) {
+      // 有结算但没日数据（上月残留/孤儿结算）
+      settledEmps.forEach((eid) => {
+        if (!dailyEmps.has(eid)) {
           orphan_settlement.push({
             employee_id: eid,
             name: nameMap.get(eid) ?? '-',
-            stage,
+            stage: '-',
             daily_rows: 0,
             issue: '有结算但无日数据（上月残留）',
           });
         }
       });
 
+      // 在职员工当月完全没日数据
       activeEmps.forEach((e: any) => {
         if (!dailyEmps.has(e.employee_id)) {
           no_daily_data.push({
@@ -239,7 +243,7 @@ export default function SettlementsPage() {
         month,
         daily_total: dailyRows.length,
         settled_total: settledRows.length,
-        matched: dailySet.size - missing_settlement.length,
+        matched: dailyEmps.size - missing_settlement.length,
         missing_settlement,
         orphan_settlement,
         no_daily_data,
@@ -247,7 +251,7 @@ export default function SettlementsPage() {
       setVerifyReport(report);
       const totalIssues = missing_settlement.length + orphan_settlement.length + no_daily_data.length;
       if (totalIssues === 0) {
-        toast.success(`✅ ${month} 数据完整：${dailySet.size} 员工/阶段 全部匹配结算`);
+        toast.success(`✅ ${month} 数据完整：${dailyEmps.size} 员工 全部匹配结算`);
       } else {
         toast.warning(`发现 ${totalIssues} 个问题项`);
       }
