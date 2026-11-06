@@ -549,14 +549,26 @@ export default function ImportPage() {
               variant="outline"
               size="sm"
               onClick={async () => {
-                const ws = XLSX.utils.aoa_to_sheet([
-                  ['工号', '月份', '实发底薪', '实发绩效', '全勤奖', '备注'],
-                  ['X2P-2609-Ter', importMonth, 6500, 2000, 0, '迟到扣款500'],
-                  ['X2P-LW-202508-Nee', importMonth, 7000, 3000, 500, '全勤'],
-                ]);
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, '薪酬调整');
-                XLSX.writeFile(wb, `薪酬调整-${importMonth}.xlsx`);
+                // 拉取所有在职员工工号
+                try {
+                  const r = await fetch('/api/employees');
+                  const j = await r.json();
+                  const activeEmps = (j.data ?? [])
+                    .filter((e: any) => e.status !== 'inactive' && e.status !== 'resigned')
+                    .map((e: any) => e.employee_id)
+                    .sort();
+                  const header = ['工号', '月份', '实发底薪', '实发绩效', '全勤奖', '备注'];
+                  const body = activeEmps.map((eid: string) => [eid, importMonth, '', '', '', '']);
+                  const ws = XLSX.utils.aoa_to_sheet([header, ...body]);
+                  ws['!cols'] = [
+                    { wch: 28 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 24 },
+                  ];
+                  const wb = XLSX.utils.book_new();
+                  XLSX.utils.book_append_sheet(wb, ws, '薪酬调整');
+                  XLSX.writeFile(wb, `薪酬调整-${importMonth}.xlsx`);
+                } catch {
+                  toast.error('下载模板失败，请检查网络');
+                }
               }}
             >
               <Download size={15} className="mr-1" /> 下载薪酬调整模板
