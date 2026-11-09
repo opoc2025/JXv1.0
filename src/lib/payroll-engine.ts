@@ -590,9 +590,14 @@ export function calculateSalary(input: EngineInput): Settlement {
   }
 
   // ---- 提成·方案 A：月度总回款阶梯提点 ----
-  // 月度总回款规则按 ALL 阶段匹配（不跟具体阶段挂钩）
-  const monthlyTierRule =
-    rulesFor(rules, deptName, 'ALL', 'MONTHLY_TOTAL_TIER')[0] ?? null;
+  // 🔥 修复：遍历员工虚拟阶段 label（含合并组名）逐个尝试，因为规则 stage_name 可能是合并组名如 'T3组'
+  // 而不是硬编码 'ALL'；最后再用 'ALL' 兜底
+  const employeeLabels = [...virtualStages.map((vs) => vs.label), 'ALL'];
+  let monthlyTierRule: SalaryRuleWithTiers | null = null;
+  for (const label of employeeLabels) {
+    monthlyTierRule = rulesFor(rules, deptName, label, 'MONTHLY_TOTAL_TIER')[0] ?? null;
+    if (monthlyTierRule) break;
+  }
   // 整月总回款 = 员工各阶段月度行金额之和；无月度行时回退日明细汇总
   const sumMonthly = monthlyRows.reduce(
     (s, r) => s + (Number(r.monthly_total_amount) || 0),
