@@ -11,6 +11,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { formatTHB } from '@/lib/format';
 
 type Loan = {
@@ -84,6 +94,8 @@ export default function LoansPage() {
   const [repRemark, setRepRemark] = useState('');
 
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Loan | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchAll();
@@ -174,6 +186,21 @@ export default function LoansPage() {
     });
     setRepAmount('');
     setRepRemark('');
+    fetchAll();
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const r = await fetch(`/api/loans?loan_id=${deleteTarget.loan_id}`, { method: 'DELETE' });
+    const j = await r.json();
+    setDeleting(false);
+    if (!r.ok) {
+      setMsg({ type: 'err', text: j.error || '删除失败' });
+      return;
+    }
+    setMsg({ type: 'ok', text: `已删除借款记录 #${deleteTarget.loan_id}（${formatTHB(deleteTarget.amount)}）` });
+    setDeleteTarget(null);
     fetchAll();
   }
 
@@ -321,12 +348,13 @@ export default function LoansPage() {
                 <TableHead>状态</TableHead>
                 <TableHead>来源</TableHead>
                 <TableHead>备注</TableHead>
+                <TableHead className="w-16">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loans.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                     暂无借款记录
                   </TableCell>
                 </TableRow>
@@ -358,6 +386,16 @@ export default function LoansPage() {
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{SOURCE_LABELS[l.source] || l.source}</TableCell>
                     <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{l.remark || '-'}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(l)}
+                      >
+                        删除
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -483,6 +521,44 @@ export default function LoansPage() {
           </div>
         </>
       )}
+
+      {/* 删除二次确认 */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除这条借款记录？</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <div>
+                  将删除借款 <span className="font-mono">#{deleteTarget?.loan_id}</span>：
+                  <span className="font-medium text-foreground">{deleteTarget?.employee_id}</span>
+                  （{deleteTarget?.employee_name}）·{' '}
+                  <span className="font-semibold text-destructive">{formatTHB(deleteTarget?.amount || 0)}</span>
+                </div>
+                {deleteTarget && deleteTarget.repaid_amount > 0 && (
+                  <div className="text-destructive">
+                    ⚠️ 该借款已有还款记录 {formatTHB(deleteTarget.repaid_amount)}，删除后关联的还款明细将一并删除，且不可恢复。
+                  </div>
+                )}
+                <div>删除后不可恢复，请谨慎操作。</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                handleDelete();
+              }}
+            >
+              {deleting ? '删除中…' : '确认删除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
