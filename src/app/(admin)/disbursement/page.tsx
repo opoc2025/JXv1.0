@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -105,6 +106,8 @@ export default function DisbursementPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ kind: 'ACTION' | 'CLEAR'; payload: any } | null>(null);
   const [qrOpen, setQrOpen] = useState<string | null>(null);
+  const [deletingRow, setDeletingRow] = useState<{ tab: 'PAYROLL' | 'REWARD'; row: PayrollRow | RewardRow } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Load depts + employees + weeks on mount
   useEffect(() => {
@@ -246,6 +249,26 @@ export default function DisbursementPage() {
   function handleAction(ids: number[], action: 'PAID' | 'CANCELLED' | 'ARCHIVE' | 'UNARCHIVE') {
     if (ids.length === 0) return;
     openConfirmAction(ids, action);
+  }
+
+  // ============ 删除单行 ============
+  async function confirmDeleteRow() {
+    if (!deletingRow) return;
+    setDeleteLoading(true);
+    try {
+      const endpoint = deletingRow.tab === 'PAYROLL' ? '/api/disbursement/payroll' : '/api/disbursement/reward';
+      const res = await fetch(`${endpoint}?id=${deletingRow.row.id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || '删除失败');
+      toast.success(
+        `已删除 ${empMap.get(deletingRow.row.employee_id)?.employee_name ?? deletingRow.row.employee_id} 的${deletingRow.tab === 'PAYROLL' ? '工资' : '奖励'}发放记录`
+      );
+      setDeletingRow(null);
+      deletingRow.tab === 'PAYROLL' ? loadPayroll() : loadReward();
+    } catch (e: any) {
+      toast.error(e.message ?? '删除失败');
+    }
+    setDeleteLoading(false);
   }
 
   function openConfirmAction(ids: number[], action: 'PAID' | 'CANCELLED' | 'ARCHIVE' | 'UNARCHIVE') {
@@ -618,13 +641,14 @@ export default function DisbursementPage() {
                 <TableHead className="text-right">实发</TableHead>
                 <TableHead className="w-16 text-center">工资卡</TableHead>
                 <TableHead className="w-16 text-center">状态</TableHead>
+                <TableHead className="w-12 text-center">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {/* 空态：完全没数据 */}
               {payrollRows.length === 0 && !hasArchived && (
                 <TableRow>
-                  <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={15} className="text-center text-muted-foreground py-8">
                     还没有快照 → 点上方「🔄 从结算生成快照」
                   </TableCell>
                 </TableRow>
@@ -632,7 +656,7 @@ export default function DisbursementPage() {
               {/* 空态：有归档但当前视图没查到（包含归档关闭时） */}
               {payrollRows.length === 0 && hasArchived && (
                 <TableRow>
-                  <TableCell colSpan={14} className="bg-green-500/5 text-center py-4">
+                  <TableCell colSpan={15} className="bg-green-500/5 text-center py-4">
                     <span className="inline-flex items-center gap-2 text-sm text-green-700">
                       ✅ 该周期已生成快照并发放归档完成，无法生成新快照。如需修改请先点「↪️ 反归档全部」。
                     </span>
@@ -642,7 +666,7 @@ export default function DisbursementPage() {
               {/* 有数据但全部是归档（包含归档开启时） */}
               {payrollRows.length > 0 && hasArchived && totals.countPending === 0 && totals.countPaid === 0 && (
                 <TableRow>
-                  <TableCell colSpan={14} className="bg-green-500/5 text-center py-4">
+                  <TableCell colSpan={15} className="bg-green-500/5 text-center py-4">
                     <span className="inline-flex items-center gap-2 text-sm text-green-700">
                       ✅ 该周期已生成快照并发放归档完成，无法生成新快照。如需修改请先点「↪️ 反归档全部」。
                     </span>
@@ -739,11 +763,27 @@ export default function DisbursementPage() {
                         {STATUS_LABEL[r.status].label}
                       </span>
                     </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        disabled={r.status === 'PAID'}
+                        onClick={() => setDeletingRow({ tab: 'PAYROLL', row: r })}
+                        title={
+                          r.status === 'PAID'
+                            ? '已发放行不能直接删除，请先取消发放（回滚借款冲减）'
+                            : '删除该行发放记录'
+                        }
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
             </TableBody>
-            {/* Footer totals — 与 14 列表头一一对应 */}
+            {/* Footer totals — 与 15 列表头一一对应 */}
             {payrollRows.length > 0 && (
               <TableHeader className="bg-muted/40 border-t border-border">
                 <TableRow>
@@ -777,7 +817,7 @@ export default function DisbursementPage() {
                   <TableHead className="text-right text-xs font-bold text-emerald-600">
                     {formatTHB(totals.totalNet)}
                   </TableHead>
-                  <TableHead colSpan={2} />
+                  <TableHead colSpan={3} />
                 </TableRow>
               </TableHeader>
             )}
@@ -808,13 +848,14 @@ export default function DisbursementPage() {
                 <TableHead className="text-right">实发</TableHead>
                 <TableHead className="w-16 text-center">工资卡</TableHead>
                 <TableHead className="w-16 text-center">状态</TableHead>
+                <TableHead className="w-12 text-center">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {/* 空态：完全没数据 */}
               {rewardRows.length === 0 && !hasArchived && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                     还没有快照 → 点上方「🔄 从结算生成快照」
                   </TableCell>
                 </TableRow>
@@ -822,7 +863,7 @@ export default function DisbursementPage() {
               {/* 空态：有归档但当前视图没查到（包含归档关闭时） */}
               {rewardRows.length === 0 && hasArchived && (
                 <TableRow>
-                  <TableCell colSpan={10} className="bg-green-500/5 text-center py-4">
+                  <TableCell colSpan={11} className="bg-green-500/5 text-center py-4">
                     <span className="inline-flex items-center gap-2 text-sm text-green-700">
                       ✅ 该周期已生成快照并发放归档完成，无法生成新快照。如需修改请先点「↪️ 反归档全部」。
                     </span>
@@ -832,7 +873,7 @@ export default function DisbursementPage() {
               {/* 有数据但全部是归档（包含归档开启时） */}
               {rewardRows.length > 0 && hasArchived && totals.countPending === 0 && totals.countPaid === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="bg-green-500/5 text-center py-4">
+                  <TableCell colSpan={11} className="bg-green-500/5 text-center py-4">
                     <span className="inline-flex items-center gap-2 text-sm text-green-700">
                       ✅ 该周期已生成快照并发放归档完成，无法生成新快照。如需修改请先点「↪️ 反归档全部」。
                     </span>
@@ -899,6 +940,22 @@ export default function DisbursementPage() {
                         {STATUS_LABEL[r.status].label}
                       </span>
                     </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        disabled={r.status === 'PAID'}
+                        onClick={() => setDeletingRow({ tab: 'REWARD', row: r })}
+                        title={
+                          r.status === 'PAID'
+                            ? '已发放行不能直接删除，请先取消发放（回滚借款冲减）'
+                            : '删除该行发放记录'
+                        }
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -920,7 +977,7 @@ export default function DisbursementPage() {
                   <TableHead className="text-right text-xs font-bold text-emerald-600">
                     {formatTHB(totals.totalNet)}
                   </TableHead>
-                  <TableHead colSpan={2} />
+                  <TableHead colSpan={3} />
                 </TableRow>
               </TableHeader>
             )}
@@ -979,6 +1036,56 @@ export default function DisbursementPage() {
           </div>
         </div>
       </div>
+
+      {/* 删除单行确认 */}
+      <AlertDialog open={!!deletingRow} onOpenChange={(v) => !v && !deleteLoading && setDeletingRow(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除发放记录？</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                确认删除{' '}
+                <strong>
+                  {deletingRow
+                    ? empMap.get(deletingRow.row.employee_id)?.employee_name ?? deletingRow.row.employee_id
+                    : ''}
+                </strong>
+                （{deletingRow?.row.employee_id}）的
+                {deletingRow?.tab === 'PAYROLL' ? '工资' : '奖励'}发放记录？
+                <ul className="mt-2 ml-4 list-disc space-y-1">
+                  <li>
+                    实发金额{' '}
+                    <span className="font-mono font-semibold text-emerald-600">
+                      {deletingRow ? formatTHB(deletingRow.row.net_pay) : ''} ฿
+                    </span>
+                    ，状态：{deletingRow ? STATUS_LABEL[deletingRow.row.status].label : ''}
+                  </li>
+                  {deletingRow && deletingRow.row.loan_deduction > 0 && (
+                    <li className="text-amber-600">
+                      该行有借款抵扣 {formatTHB(deletingRow.row.loan_deduction)} ฿，删除后可重新生成快照恢复
+                    </li>
+                  )}
+                </ul>
+                此操作不可恢复。
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeleteRow();
+              }}
+              disabled={deleteLoading}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              <Trash2 size={14} className="mr-1" />
+              {deleteLoading ? '删除中...' : '确认删除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* QR Dialog */}
       <Dialog open={!!qrOpen} onOpenChange={(o) => !o && setQrOpen(null)}>

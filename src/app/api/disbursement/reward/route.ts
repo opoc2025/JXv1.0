@@ -39,3 +39,23 @@ export async function GET(req: NextRequest) {
 	if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 	return NextResponse.json({ data });
 }
+
+/**
+ * DELETE /api/disbursement/reward?id=123
+ * 删除单条奖励发放快照（前端应仅对 PENDING/CANCELLED 行调用，PAID 行需先取消发放回滚借款冲减）
+ */
+export async function DELETE(req: NextRequest) {
+	const url = new URL(req.url);
+	const id = url.searchParams.get("id");
+	if (!id) return NextResponse.json({ error: "id 必填" }, { status: 400 });
+
+	const supabase = getSupabaseClient();
+	const { data, error } = await supabase
+		.from("reward_disbursement")
+		.delete()
+		.eq("id", Number(id))
+		.select();
+	if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+	if (!data?.length) return NextResponse.json({ error: "记录不存在" }, { status: 404 });
+	return NextResponse.json({ data: { deleted: data.length } });
+}
