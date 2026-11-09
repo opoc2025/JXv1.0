@@ -109,8 +109,13 @@ export function EmployeeDialog({ open, onOpenChange, employee, onSaved }: Props)
     ...selectedStages.filter((s) => !mergedStageNames.has(s)), // 不在任何合并组里的独立阶段
   ];
 
-  // 月度总回款提点 匹配的规则（MONTHLY_TOTAL_TIER，stage 固定 ALL）
-  const monthlyRule = matchRules('MONTHLY_TOTAL_TIER', department, 'ALL');
+  // 月度总回款提点（MONTHLY_TOTAL_TIER）：先遍历员工虚拟阶段 label（含合并组名如 'T3组'）逐个尝试，
+  // 最后用 'ALL' 兜底 —— 与 payroll-engine 匹配逻辑完全对齐
+  const monthlyRule =
+    virtualStageLabels
+      .map((s) => matchRules('MONTHLY_TOTAL_TIER', department, s))
+      .find(Boolean) ||
+    matchRules('MONTHLY_TOTAL_TIER', department, 'ALL');
   // 月度超额累进（独立并行，不受 commission_plan 控制）
   // 引擎逻辑：先 ALL 整月规则，再 VirtualStages 各匹配精确阶段规则
   const progressiveAllRule = matchRules('MONTHLY_PROGRESSIVE_TIER', department, 'ALL');
