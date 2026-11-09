@@ -323,6 +323,21 @@ export default function LoansPage() {
     fetchAll();
   }
 
+  // ===== 部门筛选联动 =====
+  // 各表单员工下拉只显示当前部门（ALL = 全部）的员工
+  const filteredEmpList =
+    deptFilter === 'ALL' ? empList : empList.filter((e) => e.department === deptFilter);
+
+  // 切换部门后，已选员工若不属于该部门则清空（避免表单与筛选不一致）
+  useEffect(() => {
+    if (deptFilter === 'ALL') return;
+    const inDept = (id: string) => empList.some((e) => e.employee_id === id && e.department === deptFilter);
+    if (regEmpId && !inDept(regEmpId)) setRegEmpId('');
+    if (repEmpId && !inDept(repEmpId)) setRepEmpId('');
+    if (subRegEmpId && !inDept(subRegEmpId)) setSubRegEmpId('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deptFilter, empList]);
+
   // 汇总数字
   const totalOutstanding = summary.reduce((s, r) => s + r.total_outstanding, 0);
   const totalLoanAll = summary.reduce((s, r) => s + r.total_loan, 0);
@@ -397,8 +412,8 @@ export default function LoansPage() {
               onChange={(e) => setRegEmpId(e.target.value)}
               className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
             >
-              <option value="">-- 选择员工 --</option>
-              {empList.map((e) => (
+              <option value="">-- 选择员工{deptFilter !== 'ALL' ? `（${deptFilter}）` : ''} --</option>
+              {filteredEmpList.map((e) => (
                 <option key={e.employee_id} value={e.employee_id}>
                   {e.employee_id} · {e.employee_name} {e.department ? `(${e.department})` : ''}
                 </option>
@@ -431,8 +446,8 @@ export default function LoansPage() {
                 onChange={(e) => setRepEmpId(e.target.value)}
                 className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
               >
-                <option value="">-- 选择员工 --</option>
-                {empList.map((e) => (
+                <option value="">-- 选择员工{deptFilter !== 'ALL' ? `（${deptFilter}）` : ''} --</option>
+                {filteredEmpList.map((e) => (
                   <option key={e.employee_id} value={e.employee_id}>
                     {e.employee_id} · {e.employee_name} {e.department ? `(${e.department})` : ''}
                   </option>
@@ -655,8 +670,8 @@ export default function LoansPage() {
                 onChange={(e) => setSubRegEmpId(e.target.value)}
                 className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
               >
-                <option value="">-- 选择员工 --</option>
-                {empList.map((e) => (
+                <option value="">-- 选择员工{deptFilter !== 'ALL' ? `（${deptFilter}）` : ''} --</option>
+                {filteredEmpList.map((e) => (
                   <option key={e.employee_id} value={e.employee_id}>
                     {e.employee_id} · {e.employee_name} {e.department ? `(${e.department})` : ''}
                   </option>
