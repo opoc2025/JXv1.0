@@ -43,6 +43,7 @@ type PayrollRow = {
   gross_salary: number;
   commission: number;
   gross_total: number;
+  subsidy_amount: number;
   loan_deduction: number;
   loan_remaining_before: number;
   net_pay: number;
@@ -395,9 +396,10 @@ export default function DisbursementPage() {
     const totalNet = pending.reduce((s: number, r: any) => s + Number(r.net_pay), 0);
     const totalGross = pending.reduce((s: number, r: any) => s + Number(tab === 'PAYROLL' ? r.gross_total : r.reward_total), 0);
     const totalLoan = pending.reduce((s: number, r: any) => s + Number(r.loan_deduction), 0);
+    const totalSubsidy = tab === 'PAYROLL' ? pending.reduce((s: number, r: any) => s + Number(r.subsidy_amount || 0), 0) : 0;
     const countPaid = filtered.filter((r: any) => r.status === 'PAID').length;
     const countPending = pending.length;
-    return { totalNet, totalGross, totalLoan, countPaid, countPending, countTotal: filtered.length, countArchived };
+    return { totalNet, totalGross, totalLoan, totalSubsidy, countPaid, countPending, countTotal: filtered.length, countArchived };
   }, [tab, payrollRows, rewardRows, archivedView]);
 
   return (
@@ -605,6 +607,7 @@ export default function DisbursementPage() {
                 <TableHead className="text-right">基础工资</TableHead>
                 <TableHead className="text-right">提成</TableHead>
                 <TableHead className="text-right">工资合计</TableHead>
+                <TableHead className="text-right">补贴</TableHead>
                 <TableHead className="text-right">借款抵扣</TableHead>
                 <TableHead className="text-right">实发</TableHead>
                 <TableHead className="w-16 text-center">工资卡</TableHead>
@@ -615,7 +618,7 @@ export default function DisbursementPage() {
               {/* 空态：完全没数据 */}
               {payrollRows.length === 0 && !hasArchived && (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={14} className="text-center text-muted-foreground py-8">
                     还没有快照 → 点上方「🔄 从结算生成快照」
                   </TableCell>
                 </TableRow>
@@ -623,7 +626,7 @@ export default function DisbursementPage() {
               {/* 空态：有归档但当前视图没查到（包含归档关闭时） */}
               {payrollRows.length === 0 && hasArchived && (
                 <TableRow>
-                  <TableCell colSpan={13} className="bg-green-500/5 text-center py-4">
+                  <TableCell colSpan={14} className="bg-green-500/5 text-center py-4">
                     <span className="inline-flex items-center gap-2 text-sm text-green-700">
                       ✅ 该周期已生成快照并发放归档完成，无法生成新快照。如需修改请先点「↪️ 反归档全部」。
                     </span>
@@ -633,7 +636,7 @@ export default function DisbursementPage() {
               {/* 有数据但全部是归档（包含归档开启时） */}
               {payrollRows.length > 0 && hasArchived && totals.countPending === 0 && totals.countPaid === 0 && (
                 <TableRow>
-                  <TableCell colSpan={13} className="bg-green-500/5 text-center py-4">
+                  <TableCell colSpan={14} className="bg-green-500/5 text-center py-4">
                     <span className="inline-flex items-center gap-2 text-sm text-green-700">
                       ✅ 该周期已生成快照并发放归档完成，无法生成新快照。如需修改请先点「↪️ 反归档全部」。
                     </span>
@@ -662,6 +665,9 @@ export default function DisbursementPage() {
                     <TableCell className="text-right text-xs font-medium">{formatTHB(r.gross_salary)}</TableCell>
                     <TableCell className="text-right text-xs">{formatTHB(r.commission)}</TableCell>
                     <TableCell className="text-right text-xs font-medium">{formatTHB(r.gross_total)}</TableCell>
+                    <TableCell className={`text-right text-xs ${Number(r.subsidy_amount) > 0 ? 'text-emerald-600 font-medium' : 'text-muted-foreground'}`}>
+                      {Number(r.subsidy_amount) > 0 ? `+${formatTHB(r.subsidy_amount)}` : '-'}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Input
@@ -741,6 +747,9 @@ export default function DisbursementPage() {
                   <TableHead colSpan={4} />
                   <TableHead className="text-right text-xs font-semibold">
                     {formatTHB(totals.totalGross)}
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-semibold text-emerald-600">
+                    +{formatTHB(totals.totalSubsidy)}
                   </TableHead>
                   <TableHead className="text-right text-xs font-semibold text-destructive">
                     -{formatTHB(totals.totalLoan)}

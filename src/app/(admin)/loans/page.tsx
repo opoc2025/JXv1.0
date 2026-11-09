@@ -75,11 +75,31 @@ function formatDateTime(iso: string): string {
 
 type EmpShort = { employee_id: string; employee_name: string; department: string | null };
 
+type SubsidyCategory = {
+  category_id: number;
+  category_name: string;
+  sort_order: number;
+  enabled: boolean;
+};
+
+type Subsidy = {
+  subsidy_id: number;
+  employee_id: string;
+  month: string;
+  category_id: number;
+  amount: number;
+  remark: string | null;
+  created_at?: string;
+  employee_name?: string;
+  employee_department?: string | null;
+  category_name?: string;
+};
+
 export default function LoansPage() {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [summary, setSummary] = useState<EmpSummary[]>([]);
-  const [tab, setTab] = useState<'REGISTER' | 'REPAY' | 'LIST' | 'EVENTS' | 'SUMMARY'>('REGISTER');
+  const [tab, setTab] = useState<'REGISTER' | 'REPAY' | 'LIST' | 'EVENTS' | 'SUMMARY' | 'SUB_REG' | 'SUB_LIST'>('REGISTER');
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [empList, setEmpList] = useState<EmpShort[]>([]);
 
@@ -97,10 +117,26 @@ export default function LoansPage() {
   const [deleteTarget, setDeleteTarget] = useState<Loan | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // ===== 补贴 =====
+  const [subsidies, setSubsidies] = useState<Subsidy[]>([]);
+  const [subCategories, setSubCategories] = useState<SubsidyCategory[]>([]);
+  const [subMonthFilter, setSubMonthFilter] = useState(new Date().toISOString().slice(0, 7));
+
+  const [subRegEmpId, setSubRegEmpId] = useState('');
+  const [subRegMonth, setSubRegMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [subRegCatId, setSubRegCatId] = useState('');
+  const [subRegAmount, setSubRegAmount] = useState('');
+  const [subRegRemark, setSubRegRemark] = useState('');
+
+  const [newCatName, setNewCatName] = useState('');
+  const [deleteSubTarget, setDeleteSubTarget] = useState<Subsidy | null>(null);
+  const [deletingSub, setDeletingSub] = useState(false);
+
   useEffect(() => {
     fetchAll();
     fetchEmpList();
-  }, [deptFilter, tab]);
+    fetchSubCategories();
+  }, [deptFilter, tab, subMonthFilter]);
 
   async function fetchEmpList() {
     const r = await fetch('/api/employees');
@@ -112,6 +148,12 @@ export default function LoansPage() {
     }));
     list.sort((a, b) => a.employee_id.localeCompare(b.employee_id));
     setEmpList(list);
+  }
+
+  async function fetchSubCategories() {
+    const r = await fetch('/api/subsidy-categories');
+    const j = await r.json();
+    setSubCategories(j.data || []);
   }
 
   async function fetchAll() {
@@ -129,6 +171,18 @@ export default function LoansPage() {
       const r = await fetch(`/api/loans?mode=summary${dept}`);
       const j = await r.json();
       setSummary(j.data || []);
+    } else if (tab === 'SUB_LIST') {
+      const m = subMonthFilter ? `&month=${subMonthFilter}` : '';
+      const r = await fetch(`/api/subsidies?${m}${dept}`);
+      const j = await r.json();
+      setSubsidies(
+        (j.data || []).map((s: any) => ({
+          ...s,
+          employee_name: s.employee?.employee_name,
+          employee_department: s.employee?.department,
+          category_name: s.subsidy_category?.category_name,
+        }))
+      );
     }
   }
 
@@ -204,6 +258,71 @@ export default function LoansPage() {
     fetchAll();
   }
 
+  // ===== 补贴操作 =====
+  async function handleSubRegister() {
+    setMsg(null);
+    if (!subRegEmpId || !subRegMonth || !subRegCatId || !subRegAmount) {
+      setMsg({ type: 'err', text: '员工、月份、类目、金额必填' });
+      return;
+    }
+    const r = await fetch('/api/subsidies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        employee_id: subRegEmpId,
+        month: subRegMonth,
+        category_id: Number(subRegCatId),
+        amount: Number(subRegAmount),
+        remark: subRegRemark,
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      setMsg({ type: 'err', text: j.error || '失败' });
+      return;
+    }
+    setMsg({ type: 'ok', text: `补贴登记成功：${formatTHB(Number(subRegAmount))}（${subRegMonth}）` });
+    setSubRegAmount('');
+    setSubRegRemark('');
+    fetchAll();
+  }
+
+  async function handleAddCategory() {
+    setMsg(null);
+    if (!newCatName.trim()) {
+      setMsg({ type: 'err', text: '类目名称必填' });
+      return;
+    }
+    const r = await fetch('/api/subsidy-categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category_name: newCatName, sort_order: subCategories.length + 1 }),
+    });
+    const j = await r.json();
+    if (!r.ok) {
+      setMsg({ type: 'err', text: j.error || '失败' });
+      return;
+    }
+    setMsg({ type: 'ok', text: `类目「${newCatName.trim()}」已创建` });
+    setNewCatName('');
+    fetchSubCategories();
+  }
+
+  async function handleDeleteSubsidy() {
+    if (!deleteSubTarget) return;
+    setDeletingSub(true);
+    const r = await fetch(`/api/subsidies?subsidy_id=${deleteSubTarget.subsidy_id}`, { method: 'DELETE' });
+    const j = await r.json();
+    setDeletingSub(false);
+    if (!r.ok) {
+      setMsg({ type: 'err', text: j.error || '删除失败' });
+      return;
+    }
+    setMsg({ type: 'ok', text: `已删除补贴记录 #${deleteSubTarget.subsidy_id}（${formatTHB(deleteSubTarget.amount)}）` });
+    setDeleteSubTarget(null);
+    fetchAll();
+  }
+
   // 汇总数字
   const totalOutstanding = summary.reduce((s, r) => s + r.total_outstanding, 0);
   const totalLoanAll = summary.reduce((s, r) => s + r.total_loan, 0);
@@ -244,6 +363,8 @@ export default function LoansPage() {
           { key: 'LIST', label: '📋 借款列表' },
           { key: 'EVENTS', label: '📜 事件流' },
           { key: 'SUMMARY', label: '📊 员工汇总' },
+          { key: 'SUB_REG', label: '🎁 补贴登记' },
+          { key: 'SUB_LIST', label: '📋 补贴列表' },
         ].map((t) => (
           <button
             key={t.key}
@@ -522,6 +643,178 @@ export default function LoansPage() {
         </>
       )}
 
+      {tab === 'SUB_REG' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* 补贴登记表单 */}
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <h3 className="text-sm font-medium">登记补贴</h3>
+            <div>
+              <label className="text-xs text-muted-foreground">员工</label>
+              <select
+                value={subRegEmpId}
+                onChange={(e) => setSubRegEmpId(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+              >
+                <option value="">-- 选择员工 --</option>
+                {empList.map((e) => (
+                  <option key={e.employee_id} value={e.employee_id}>
+                    {e.employee_id} · {e.employee_name} {e.department ? `(${e.department})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">补贴月份（发放时计入该月工资）</label>
+              <Input type="month" value={subRegMonth} onChange={(e) => setSubRegMonth(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">补贴类目</label>
+              <select
+                value={subRegCatId}
+                onChange={(e) => setSubRegCatId(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+              >
+                <option value="">-- 选择类目 --</option>
+                {subCategories.filter((c) => c.enabled).map((c) => (
+                  <option key={c.category_id} value={c.category_id}>
+                    {c.category_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">金额 (฿)</label>
+              <Input type="number" value={subRegAmount} onChange={(e) => setSubRegAmount(e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">备注</label>
+              <Input value={subRegRemark} onChange={(e) => setSubRegRemark(e.target.value)} placeholder="可选" />
+            </div>
+            <Button onClick={handleSubRegister}>登记补贴</Button>
+          </div>
+
+          {/* 类目管理 */}
+          <div className="rounded-md border border-border p-4 space-y-3">
+            <h3 className="text-sm font-medium">补贴类目管理</h3>
+            <div className="flex gap-2">
+              <Input
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                placeholder="新类目名称，如：餐费补贴"
+                onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+              />
+              <Button variant="outline" onClick={handleAddCategory}>新增</Button>
+            </div>
+            <div className="rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>类目名称</TableHead>
+                    <TableHead className="w-20">状态</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {subCategories.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={2} className="text-center text-muted-foreground py-6 text-xs">
+                        暂无类目
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {subCategories.map((c) => (
+                    <TableRow key={c.category_id}>
+                      <TableCell className="text-sm">{c.category_name}</TableCell>
+                      <TableCell>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] ${
+                          c.enabled ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'
+                        }`}>
+                          {c.enabled ? '启用' : '停用'}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              类目被补贴记录引用后不可删除；如需停用可在数据库将 enabled 设为 false。
+            </p>
+          </div>
+        </div>
+      )}
+
+      {tab === 'SUB_LIST' && (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">月份:</span>
+            <Input
+              type="month"
+              value={subMonthFilter}
+              onChange={(e) => setSubMonthFilter(e.target.value)}
+              className="w-36 text-xs"
+            />
+            <span className="text-xs text-muted-foreground ml-4">
+              当月补贴合计:{' '}
+              <span className="text-emerald-600 font-semibold">
+                {formatTHB(subsidies.reduce((s, r) => s + Number(r.amount), 0))}
+              </span>
+              <span className="ml-1">({subsidies.length} 条)</span>
+            </span>
+          </div>
+          <div className="rounded-md border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24">月份</TableHead>
+                  <TableHead>工号 / 姓名</TableHead>
+                  <TableHead>类目</TableHead>
+                  <TableHead className="text-right">金额</TableHead>
+                  <TableHead>备注</TableHead>
+                  <TableHead className="w-16">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {subsidies.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      该月份暂无补贴记录
+                    </TableCell>
+                  </TableRow>
+                )}
+                {subsidies.map((s) => (
+                  <TableRow key={s.subsidy_id}>
+                    <TableCell className="text-xs font-mono">{s.month}</TableCell>
+                    <TableCell>
+                      <div className="font-mono text-xs">{s.employee_id}</div>
+                      <div className="text-xs text-muted-foreground">{s.employee_name}</div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="rounded-full bg-sky-500/10 text-sky-600 px-2 py-0.5 text-[10px]">
+                        {s.category_name || `#${s.category_id}`}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right text-xs font-medium text-emerald-600">
+                      +{formatTHB(Number(s.amount))}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{s.remark || '-'}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                        onClick={() => setDeleteSubTarget(s)}
+                      >
+                        删除
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+
       {/* 删除二次确认 */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}>
         <AlertDialogContent>
@@ -555,6 +848,43 @@ export default function LoansPage() {
               }}
             >
               {deleting ? '删除中…' : '确认删除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 补贴删除二次确认 */}
+      <AlertDialog open={!!deleteSubTarget} onOpenChange={(v) => !v && setDeleteSubTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除这条补贴记录？</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <div>
+                  将删除补贴 <span className="font-mono">#{deleteSubTarget?.subsidy_id}</span>：
+                  <span className="font-medium text-foreground">{deleteSubTarget?.employee_id}</span>
+                  （{deleteSubTarget?.employee_name}）· {deleteSubTarget?.month} ·{' '}
+                  <span className="text-sky-600">{deleteSubTarget?.category_name}</span> ·{' '}
+                  <span className="font-semibold text-emerald-600">{formatTHB(Number(deleteSubTarget?.amount || 0))}</span>
+                </div>
+                <div>
+                  ⚠️ 如果该月工资发放快照已生成，需重新生成快照才会反映此次删除。
+                </div>
+                <div>删除后不可恢复，请谨慎操作。</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingSub}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deletingSub}
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteSubsidy();
+              }}
+            >
+              {deletingSub ? '删除中…' : '确认删除'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

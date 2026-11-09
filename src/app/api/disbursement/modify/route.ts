@@ -44,12 +44,14 @@ export async function PATCH(req: NextRequest) {
 		const ld = Math.max(0, Number(body.loan_deduction));
 		updates.loan_deduction = ld;
 		updates.loan_deduction_override = true;
-		// 如果没同时改 net_pay，自动重算
+		// 如果没同时改 net_pay，自动重算（工资表含补贴：net = gross + subsidy - loan）
 		if (!hasNetChange) {
 			const grossTotal = Number(
 				table === "payroll_disbursement" ? row.gross_total : row.reward_total
 			);
-			updates.net_pay = Math.max(0, grossTotal - ld);
+			const subsidy =
+				table === "payroll_disbursement" ? Number(row.subsidy_amount || 0) : 0;
+			updates.net_pay = Math.max(0, round2(grossTotal + subsidy - ld));
 			updates.net_pay_override = false; // 自动算的不算手动修改
 		}
 	}
@@ -66,4 +68,8 @@ export async function PATCH(req: NextRequest) {
 	if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
 
 	return NextResponse.json({ data: data?.[0] });
+}
+
+function round2(v: number) {
+	return Math.round(v * 100) / 100;
 }

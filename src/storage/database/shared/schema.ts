@@ -460,6 +460,40 @@ export const loanRepayLog = pgTable(
 	]
 );
 
+// ============ 补贴模块 ============
+
+// 17.2 补贴类目（邮费补贴、交通补贴等）
+export const subsidyCategory = pgTable(
+	"subsidy_category",
+	{
+		category_id: serial("category_id").primaryKey(),
+		category_name: varchar("category_name", { length: 64 }).notNull().unique(), // 类目名（唯一）
+		sort_order: integer("sort_order").notNull().default(0),
+		enabled: boolean("enabled").notNull().default(true),
+		created_at: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+	},
+	(table) => [index("subsidy_category_sort_idx").on(table.sort_order)]
+);
+
+// 17.3 补贴记录（按月归属，生成工资发放快照时计入）
+export const subsidyRecord = pgTable(
+	"subsidy_record",
+	{
+		subsidy_id: serial("subsidy_id").primaryKey(),
+		employee_id: varchar("employee_id", { length: 32 }).notNull().references(() => employee.employee_id, { onDelete: "cascade" }),
+		month: varchar("month", { length: 7 }).notNull(), // 归属月份 'YYYY-MM'
+		category_id: integer("category_id").notNull().references(() => subsidyCategory.category_id, { onDelete: "restrict" }),
+		amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+		remark: text("remark"),
+		created_at: timestamp("created_at", { withTimezone: true, mode: "string" }).defaultNow().notNull(),
+	},
+	(table) => [
+		index("subsidy_record_emp_idx").on(table.employee_id),
+		index("subsidy_record_month_idx").on(table.month),
+		index("subsidy_record_cat_idx").on(table.category_id),
+	]
+);
+
 // ============ 发放模块 ============
 
 // 18. 工资发放快照（按月，从 salary_settlement_result 复制）
@@ -477,6 +511,8 @@ export const payrollDisbursement = pgTable(
 		gross_salary: numeric("gross_salary", { precision: 14, scale: 2 }).notNull().default(sql`0`), // 基础工资小计
 		commission: numeric("commission", { precision: 14, scale: 2 }).notNull().default(sql`0`), // 提成合计
 		gross_total: numeric("gross_total", { precision: 14, scale: 2 }).notNull().default(sql`0`), // 工资合计
+		// === 补贴 ===
+		subsidy_amount: numeric("subsidy_amount", { precision: 14, scale: 2 }).notNull().default(sql`0`), // 当月补贴合计（从 subsidy_record 汇总）
 		// === 借款 ===
 		loan_deduction: numeric("loan_deduction", { precision: 14, scale: 2 }).notNull().default(sql`0`), // 抵扣金额（可改）
 		loan_deduction_override: boolean("loan_deduction_override").notNull().default(false),

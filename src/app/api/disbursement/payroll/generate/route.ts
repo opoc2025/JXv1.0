@@ -46,6 +46,17 @@ export async function POST(req: NextRequest) {
 		.in("employee_id", empIds)
 		.eq("status", "OUTSTANDING");
 
+	// 2.1 查该月补贴记录，按员工汇总
+	const { data: subsidies } = await supabase
+		.from("subsidy_record")
+		.select("employee_id, amount")
+		.eq("month", month)
+		.in("employee_id", empIds);
+	const subsidyMap = new Map<string, number>();
+	for (const s of subsidies || []) {
+		subsidyMap.set(s.employee_id, round2((subsidyMap.get(s.employee_id) || 0) + Number(s.amount)));
+	}
+
 	// 按 employee_id 汇总未清借款
 	const loanMap = new Map<string, number>();
 	for (const l of loans || []) {
@@ -68,10 +79,13 @@ export async function POST(req: NextRequest) {
 		// ❗ 关键：用引擎算好的 total_salary 作为应发合计，不要自己重算
 		const grossTotal = round2(Number(s.total_salary ?? grossSalary + commission));
 
-		// 借款抵扣：默认 min(未清借款, 应发合计)
+		// 补贴：该月补贴记录合计（加项）
+		const subsidyAmount = subsidyMap.get(s.employee_id) || 0;
+
+		// 借款抵扣（方案 1）：抵扣上限 = 工资合计 + 补贴
 		const loanRemaining = round2(loanMap.get(s.employee_id) || 0);
-		const loanDeduction = round2(Math.min(loanRemaining, grossTotal));
-		const netPay = round2(Math.max(0, grossTotal - loanDeduction));
+		const loanDeduction = round2(Math.min(loanRemaining, round2(grossTotal + subsidyAmount)));
+		const netPay = round2(Math.max(0, round2(grossTotal + subsidyAmount) - loanDeduction));
 
 		const emp = s.employee;
 
@@ -85,6 +99,7 @@ export async function POST(req: NextRequest) {
 			gross_salary: grossSalary,
 			commission,
 			gross_total: grossTotal,
+			subsidy_amount: subsidyAmount,
 			loan_deduction: loanDeduction,
 			loan_deduction_override: false,
 			loan_remaining_before: loanRemaining,
