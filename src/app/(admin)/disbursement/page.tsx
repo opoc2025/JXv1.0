@@ -300,6 +300,7 @@ export default function DisbursementPage() {
         j.loan_repay_logs > 0 ? `，自动冲减 ${j.loan_repay_logs} 笔借款` : ''
       }`,
     });
+    setSelected(new Set()); // 操作完成后清空勾选
     tab === 'PAYROLL' ? loadPayroll() : loadReward();
   }
 
