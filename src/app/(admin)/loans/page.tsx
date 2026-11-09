@@ -476,7 +476,8 @@ export default function LoansPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-48">时间</TableHead>
+                <TableHead className="w-40">登记时间</TableHead>
+                <TableHead className="w-24">借款时间</TableHead>
                 <TableHead>工号 / 姓名</TableHead>
                 <TableHead className="text-right">借款</TableHead>
                 <TableHead className="text-right">已还</TableHead>
@@ -490,20 +491,18 @@ export default function LoansPage() {
             <TableBody>
               {loans.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     暂无借款记录
                   </TableCell>
                 </TableRow>
               )}
               {loans.map((l) => {
                 const owed = l.amount - l.repaid_amount;
-                const time = l.created_at ? formatDateTime(l.created_at) : l.loan_date;
+                const time = l.created_at ? formatDateTime(l.created_at) : '-';
                 return (
                   <TableRow key={l.loan_id}>
-                    <TableCell className="text-xs font-mono">
-                      <div>{time}</div>
-                      <div className="text-muted-foreground">{l.loan_date}</div>
-                    </TableCell>
+                    <TableCell className="text-xs font-mono">{time}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">{l.loan_date}</TableCell>
                     <TableCell>
                       <div className="font-mono text-xs">{l.employee_id}</div>
                       <div className="text-xs text-muted-foreground">{l.employee_name}</div>
@@ -780,7 +779,8 @@ export default function LoansPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-24">月份</TableHead>
+                  <TableHead className="w-24">补贴月份</TableHead>
+                  <TableHead className="w-40">登记时间</TableHead>
                   <TableHead>工号 / 姓名</TableHead>
                   <TableHead>类目</TableHead>
                   <TableHead className="text-right">金额</TableHead>
@@ -791,7 +791,7 @@ export default function LoansPage() {
               <TableBody>
                 {subsidies.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       该月份暂无补贴记录
                     </TableCell>
                   </TableRow>
@@ -799,6 +799,9 @@ export default function LoansPage() {
                 {subsidies.map((s) => (
                   <TableRow key={s.subsidy_id}>
                     <TableCell className="text-xs font-mono">{s.month}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">
+                      {s.created_at ? formatDateTime(s.created_at) : '-'}
+                    </TableCell>
                     <TableCell>
                       <div className="font-mono text-xs">{s.employee_id}</div>
                       <div className="text-xs text-muted-foreground">{s.employee_name}</div>

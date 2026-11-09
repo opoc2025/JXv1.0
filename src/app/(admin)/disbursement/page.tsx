@@ -393,13 +393,19 @@ export default function DisbursementPage() {
     const countArchived = rows.filter((r: any) => r.archived).length;
     const filtered = rows.filter((r: any) => !archivedView ? !r.archived : true);
     const pending = filtered.filter((r: any) => r.status === 'PENDING');
+    const isPayroll = tab === 'PAYROLL';
     const totalNet = pending.reduce((s: number, r: any) => s + Number(r.net_pay), 0);
-    const totalGross = pending.reduce((s: number, r: any) => s + Number(tab === 'PAYROLL' ? r.gross_total : r.reward_total), 0);
+    const totalBase = isPayroll ? pending.reduce((s: number, r: any) => s + Number(r.base_salary), 0) : 0;
+    const totalPerf = isPayroll ? pending.reduce((s: number, r: any) => s + Number(r.performance_bonus), 0) : 0;
+    const totalAttendance = isPayroll ? pending.reduce((s: number, r: any) => s + Number(r.full_attendance_bonus), 0) : 0;
+    const totalGrossSalary = isPayroll ? pending.reduce((s: number, r: any) => s + Number(r.gross_salary), 0) : 0;
+    const totalCommission = isPayroll ? pending.reduce((s: number, r: any) => s + Number(r.commission), 0) : 0;
+    const totalGross = pending.reduce((s: number, r: any) => s + Number(isPayroll ? r.gross_total : r.reward_total), 0);
     const totalLoan = pending.reduce((s: number, r: any) => s + Number(r.loan_deduction), 0);
-    const totalSubsidy = tab === 'PAYROLL' ? pending.reduce((s: number, r: any) => s + Number(r.subsidy_amount || 0), 0) : 0;
+    const totalSubsidy = isPayroll ? pending.reduce((s: number, r: any) => s + Number(r.subsidy_amount || 0), 0) : 0;
     const countPaid = filtered.filter((r: any) => r.status === 'PAID').length;
     const countPending = pending.length;
-    return { totalNet, totalGross, totalLoan, totalSubsidy, countPaid, countPending, countTotal: filtered.length, countArchived };
+    return { totalNet, totalGross, totalLoan, totalSubsidy, totalBase, totalPerf, totalAttendance, totalGrossSalary, totalCommission, countPaid, countPending, countTotal: filtered.length, countArchived };
   }, [tab, payrollRows, rewardRows, archivedView]);
 
   return (
@@ -737,14 +743,28 @@ export default function DisbursementPage() {
                 );
               })}
             </TableBody>
-            {/* Footer totals */}
+            {/* Footer totals — 与 14 列表头一一对应 */}
             {payrollRows.length > 0 && (
               <TableHeader className="bg-muted/40 border-t border-border">
                 <TableRow>
                   <TableHead colSpan={3} className="text-xs font-semibold">
                     待发放合计 ({totals.countPending} 人)
                   </TableHead>
-                  <TableHead colSpan={4} />
+                  <TableHead className="text-right text-xs font-semibold">
+                    {formatTHB(totals.totalBase)}
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-semibold">
+                    {formatTHB(totals.totalPerf)}
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-semibold">
+                    {formatTHB(totals.totalAttendance)}
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-semibold">
+                    {formatTHB(totals.totalGrossSalary)}
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-semibold">
+                    {formatTHB(totals.totalCommission)}
+                  </TableHead>
                   <TableHead className="text-right text-xs font-semibold">
                     {formatTHB(totals.totalGross)}
                   </TableHead>
@@ -757,7 +777,7 @@ export default function DisbursementPage() {
                   <TableHead className="text-right text-xs font-bold text-emerald-600">
                     {formatTHB(totals.totalNet)}
                   </TableHead>
-                  <TableHead colSpan={3} />
+                  <TableHead colSpan={2} />
                 </TableRow>
               </TableHeader>
             )}
