@@ -69,6 +69,10 @@ export default function SettlementsPage() {
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [drawerRow, setDrawerRow] = useState<Row | null>(null);
   const [finalizing, setFinalizing] = useState<Row | null>(null);
+  const [deleting, setDeleting] = useState<Row | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [batchFinalizeOpen, setBatchFinalizeOpen] = useState(false);
+  const [batchFinalizeLoading, setBatchFinalizeLoading] = useState(false);
   const [deptFilter, setDeptFilter] = useState<string>('ALL');
   const [checkOpen, setCheckOpen] = useState(false);
 
@@ -278,6 +282,51 @@ export default function SettlementsPage() {
     setFinalizing(null);
   };
 
+  // 一键终审：当前筛选（部门）下的全部草稿
+  const draftRows = filteredRows.filter((r) => r.status !== 'FINALIZED');
+  const draftTotal = draftRows.reduce((s, r) => s + r.total_salary, 0);
+
+  const confirmBatchFinalize = async () => {
+    if (!draftRows.length) return;
+    setBatchFinalizeLoading(true);
+    try {
+      const res = await fetch('/api/settlements', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: draftRows.map((r) => r.settlement_id),
+          status: 'FINALIZED',
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? '批量终审失败');
+      toast.success(`已终审 ${json.data.updated} 人${deptFilter !== 'ALL' ? `（${deptFilter}）` : ''}`);
+      setBatchFinalizeOpen(false);
+      void load();
+    } catch (e: any) {
+      toast.error(e.message ?? '批量终审失败');
+    }
+    setBatchFinalizeLoading(false);
+  };
+
+  const confirmDeleteRow = async () => {
+    if (!deleting?.settlement_id) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/settlements?settlement_id=${deleting.settlement_id}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? '删除失败');
+      toast.success(`已删除 ${deleting.employee?.employee_name}（${deleting.employee_id}）的结算记录`);
+      setDeleting(null);
+      void load();
+    } catch (e: any) {
+      toast.error(e.message ?? '删除失败');
+    }
+    setDeleteLoading(false);
+  };
+
   const handleExport = () => {
     const exportRows: ExportSettlementRow[] = filteredRows.map((r) => ({
       employee_id: r.employee_id,
@@ -372,6 +421,16 @@ export default function SettlementsPage() {
           <Button onClick={runCalculate} disabled={calculating}>
             <Calculator size={15} />
             {calculating ? '核算中...' : rows.length === 0 ? '一键核算全员薪资' : '重新核算'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setBatchFinalizeOpen(true)}
+            disabled={draftRows.length === 0}
+            className="text-primary hover:text-primary"
+            title={deptFilter === 'ALL' ? '终审全部草稿' : `终审 ${deptFilter} 的草稿`}
+          >
+            <BadgeCheck size={15} />
+            一键终审{deptFilter !== 'ALL' ? `（${deptFilter}）` : ''}
           </Button>
           <Button
             variant="ghost"
@@ -522,6 +581,15 @@ export default function SettlementsPage() {
                         <BadgeCheck size={15} />
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-vermilion hover:text-vermilion hover:bg-vermilion/10"
+                      onClick={() => setDeleting(r)}
+                      title={`删除 ${r.employee?.employee_name ?? r.employee_id} 的结算记录`}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -579,6 +647,83 @@ export default function SettlementsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction onClick={confirmFinalize}>确认终审</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 单行删除确认 */}
+      <AlertDialog open={!!deleting} onOpenChange={(v) => !v && !deleteLoading && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除结算记录？</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                确认删除 <strong>{deleting?.employee?.employee_name}</strong>（{deleting?.employee_id}）在{' '}
+                {deleting?.month} 的结算记录？
+                <ul className="mt-2 ml-4 list-disc space-y-1">
+                  <li>
+                    应发总工资{' '}
+                    <span className="font-mono font-semibold text-primary">
+                      {deleting ? formatTHB(deleting.total_salary) : ''} ฿
+                    </span>
+                  </li>
+                  <li>
+                    状态：
+                    {deleting?.status === 'FINALIZED' ? (
+                      <span className="font-semibold text-vermilion">已终审（删除后需重新核算）</span>
+                    ) : (
+                      '草稿'
+                    )}
+                  </li>
+                </ul>
+                此操作不可恢复。
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDeleteRow();
+              }}
+              disabled={deleteLoading}
+              className="bg-vermilion hover:bg-vermilion/90"
+            >
+              <Trash2 size={14} className="mr-1" />
+              {deleteLoading ? '删除中...' : '确认删除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 一键终审确认 */}
+      <AlertDialog open={batchFinalizeOpen} onOpenChange={(v) => !v && !batchFinalizeLoading && setBatchFinalizeOpen(v)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>一键终审确认</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                将终审 <strong>{deptFilter === 'ALL' ? '全部部门' : deptFilter}</strong> 的{' '}
+                <strong>{draftRows.length}</strong> 条草稿结算，应发合计{' '}
+                <span className="font-mono font-semibold text-primary">{formatTHB(draftTotal)} ฿</span>。
+                <br />
+                终审后重新核算将跳过这些员工。已终审的 {filteredRows.length - draftRows.length} 条不受影响。
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchFinalizeLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmBatchFinalize();
+              }}
+              disabled={batchFinalizeLoading}
+            >
+              <BadgeCheck size={14} className="mr-1" />
+              {batchFinalizeLoading ? '终审中...' : `确认终审 ${draftRows.length} 人`}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
