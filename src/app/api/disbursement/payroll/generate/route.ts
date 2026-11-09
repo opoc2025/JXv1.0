@@ -25,16 +25,32 @@ export async function POST(req: NextRequest) {
 		return NextResponse.json({ error: "该月已完成发放并归档，无法重新生成快照。如需修改请先反归档。" }, { status: 400 });
 	}
 
-	// 1. 查该月薪酬结算
+	// 1. 查该月已终审的薪酬结算（只有 FINALIZED 才允许生成发放快照）
 	let q = supabase
 		.from("salary_settlement_result")
 		.select("*, employee!inner(employee_id,department)")
-		.eq("month", month);
+		.eq("month", month)
+		.eq("status", "FINALIZED");
 	if (dept) q = q.eq("employee.department", dept);
 
 	const { data: settlements, error: e1 } = await q;
 	if (e1) return NextResponse.json({ error: e1.message }, { status: 500 });
 	if (!settlements || settlements.length === 0) {
+		// 区分：该范围内完全没有结算 vs 有结算但均未终审
+		let qAll = supabase
+			.from("salary_settlement_result")
+			.select("employee!inner(id)", { count: "exact", head: true })
+			.eq("month", month);
+		if (dept) qAll = qAll.eq("employee.department", dept);
+		const { count } = await qAll;
+		if (count && count > 0) {
+			return NextResponse.json(
+				{
+					error: `该${dept ? `部门（${dept}）` : "月"}有 ${count} 条薪酬结算但均未终审，请到「薪酬核算」终审后再生成快照`,
+				},
+				{ status: 400 }
+			);
+		}
 		return NextResponse.json({ error: "所选月份没有薪酬结算，请到薪酬核算先计算" }, { status: 400 });
 	}
 
