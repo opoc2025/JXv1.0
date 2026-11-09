@@ -454,6 +454,19 @@ export function calculateSalary(input: EngineInput): Settlement {
     }
   }
 
+  // ====== 前置：分离"精确阶段规则"和"ALL 规则" ======
+  // ALL 规则（stage_name='ALL'）必须整月汇总算一次，不能让多合并组/多虚拟阶段各匹配一遍导致重复计算
+  const exactOnlyRules = rules.filter((r) => r.stage_name !== 'ALL');
+  // 用完整 rules 找 ALL 规则（走 rulesFor 的部门精确 + ALL 优先级）
+  const hasDailyCommission = employee.has_daily_commission !== false;
+  const allDailyRules = hasDailyCommission
+    ? rulesFor(rules, deptName, 'ALL', 'DAILY_STEP')
+    : [];
+  const allStageTierRules =
+    employee.commission_plan === 'B'
+      ? rulesFor(rules, deptName, 'ALL', 'STAGE_AMOUNT_TIER')
+      : [];
+
   const stageResults: StageSettlement[] = [];
 
   for (const vs of virtualStages) {
@@ -512,9 +525,9 @@ export function calculateSalary(input: EngineInput): Settlement {
     }
 
     // ---- 提成·日达成阶梯（独立开关：员工可选择是否参与）----
-    const hasDailyCommission = employee.has_daily_commission !== false; // 默认 true（向后兼容）
+    // 🔥 用 exactOnlyRules：排除 ALL 规则（已在循环外单独处理），避免多合并组重复命中
     const dailyRules = hasDailyCommission
-      ? rulesFor(rules, deptName, vs.label, 'DAILY_STEP')
+      ? rulesFor(exactOnlyRules, deptName, vs.label, 'DAILY_STEP')
       : [];
     const dailyHits: DailyRuleHit[] = [];
     for (const day of days) {
@@ -554,7 +567,8 @@ export function calculateSalary(input: EngineInput): Settlement {
     const dailyCommission = round2(dailyHits.reduce((s, h) => s + h.commission, 0));
 
     // ---- 提成·方案 B：分阶段金额提点（合并组也走同样逻辑）----
-    const stageTierRule = rulesFor(rules, deptName, vs.label, 'STAGE_AMOUNT_TIER')[0] ?? null;
+    // 🔥 同样用 exactOnlyRules：排除 ALL 规则，避免重复匹配
+    const stageTierRule = rulesFor(exactOnlyRules, deptName, vs.label, 'STAGE_AMOUNT_TIER')[0] ?? null;
     let stageCommission: StageSettlement['stage_commission'] = {
       rule_id: null,
       rule_name: '未配置分阶段阶梯',
@@ -742,6 +756,110 @@ export function calculateSalary(input: EngineInput): Settlement {
       commission: progressiveCommission,
       tier_breakdown: breakdown,
     };
+  }
+
+  // ====== ALL 规则（stage_name='ALL'）：整月汇总算一次，避免多合并组重复匹配 ======
+  if (allDailyRules.length > 0) {
+    // 汇总全部日数据 → 按 date 合并（和合并组逻辑相同）
+    const byDate = new Map<string, DailyData>();
+    for (const d of dailyRows) {
+      const existing = byDate.get(d.date);
+      if (existing) {
+        existing.recovered_orders += d.recovered_orders;
+        existing.recovered_amount = round2(existing.recovered_amount + d.recovered_amount);
+        if (d.total_orders != null) existing.total_orders = (existing.total_orders ?? 0) + d.total_orders;
+        if (d.total_amount != null) existing.total_amount = round2((existing.total_amount ?? 0) + d.total_amount);
+        existing.target_recovery_rate = null;
+        existing.amount_achievement_rate = null;
+      } else {
+        byDate.set(d.date, { ...d, stage: 'ALL' });
+      }
+    }
+    for (const d of byDate.values()) {
+      d.target_recovery_rate = preciseDailyOrderRate(d);
+      d.amount_achievement_rate = preciseDailyAmountRate(d);
+    }
+    const allDays = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+
+    const allDailyHits: DailyRuleHit[] = [];
+    for (const day of allDays) {
+      for (const rule of allDailyRules) {
+        const metricMeta = metricByCode.get(rule.metric ?? '');
+        let metricValue: number | null = metricMeta
+          ? metricValueOf(metricMeta, undefined, day, 'DAILY')
+          : legacyDailyMetric(rule.metric, day);
+        if (metricValue === null || metricValue === undefined) continue;
+        const tier = findTier(rule.tiers, metricValue);
+        if (!tier) continue;
+        let commission: number;
+        if (tier.reward_type === 'FIXED_AMOUNT') {
+          commission = tier.reward_value;
+        } else if (tier.reward_type === 'UNIT_PRICE') {
+          commission = tier.reward_value * day.recovered_orders;
+        } else {
+          commission = tier.reward_value * day.recovered_amount;
+        }
+        allDailyHits.push({
+          date: day.date,
+          stage: 'ALL(通用)',
+          orders: day.recovered_orders,
+          amount: day.recovered_amount,
+          rate: day.target_recovery_rate,
+          rule_id: rule.rule_id,
+          rule_name: rule.rule_name,
+          metric_value: metricValue,
+          range_text: rangeText(tier),
+          reward_type: tier.reward_type,
+          reward_value: tier.reward_value,
+          commission: round2(commission),
+        });
+      }
+    }
+    const allDailyCommission = round2(allDailyHits.reduce((s, h) => s + h.commission, 0));
+
+    stageResults.push({
+      stage: 'ALL(通用规则)',
+      is_merged: false,
+      source_stages: null,
+      daily_hits: allDailyHits,
+      daily_commission: allDailyCommission,
+      stage_commission: {
+        rule_id: null,
+        rule_name: '未配置分阶段阶梯',
+        total_amount: 0,
+        range_text: '-',
+        percentage: null,
+        commission: 0,
+      },
+    });
+  }
+
+  // ALL STAGE_AMOUNT_TIER：整月金额汇总算一次
+  if (allStageTierRules.length > 0 && employee.commission_plan === 'B') {
+    const allRule = allStageTierRules[0];
+    const allMonthlyAmount = round2(
+      monthlyRows.length > 0
+        ? monthlyRows.reduce((s, r) => s + (r.monthly_total_amount ?? 0), 0)
+        : dailyRows.reduce((s, d) => s + d.recovered_amount, 0)
+    );
+    const tier = findTier(allRule.tiers, allMonthlyAmount);
+    const pct = tier?.reward_type === 'PERCENTAGE' ? tier.reward_value : null;
+    const allStageCommission: StageSettlement['stage_commission'] = {
+      rule_id: allRule.rule_id,
+      rule_name: allRule.rule_name,
+      total_amount: allMonthlyAmount,
+      range_text: rangeText(tier),
+      percentage: pct,
+      commission: tier && pct !== null ? round2(allMonthlyAmount * pct) : 0,
+    };
+    stageResults.push({
+      stage: 'ALL(通用规则)',
+      is_merged: false,
+      source_stages: null,
+      daily_hits: [],
+      daily_commission: 0,
+      stage_commission: allStageCommission,
+    });
   }
 
   // ---- 汇总：绩效考核方案(底薪+绩效) + 提成方案 ----
