@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Calculator, FileDown, Eye, BadgeCheck, Trash2, CheckCircle2, AlertTriangle, Database } from 'lucide-react';
+import { Calculator, FileDown, Eye, BadgeCheck, Trash2, CheckCircle2, AlertTriangle, Database, RotateCcw } from 'lucide-react';
 import { ImportCheckDialog } from '@/components/import-check-dialog';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -73,6 +73,10 @@ export default function SettlementsPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [batchFinalizeOpen, setBatchFinalizeOpen] = useState(false);
   const [batchFinalizeLoading, setBatchFinalizeLoading] = useState(false);
+  const [reverting, setReverting] = useState<Row | null>(null);
+  const [revertLoading, setRevertLoading] = useState(false);
+  const [batchRevertOpen, setBatchRevertOpen] = useState(false);
+  const [batchRevertLoading, setBatchRevertLoading] = useState(false);
   const [deptFilter, setDeptFilter] = useState<string>('ALL');
   const [checkOpen, setCheckOpen] = useState(false);
 
@@ -285,6 +289,8 @@ export default function SettlementsPage() {
   // 一键终审：当前筛选（部门）下的全部草稿
   const draftRows = filteredRows.filter((r) => r.status !== 'FINALIZED');
   const draftTotal = draftRows.reduce((s, r) => s + r.total_salary, 0);
+  // 一键反终审：当前筛选（部门）下的全部已终审
+  const finalizedRows = filteredRows.filter((r) => r.status === 'FINALIZED');
 
   const confirmBatchFinalize = async () => {
     if (!draftRows.length) return;
@@ -325,6 +331,51 @@ export default function SettlementsPage() {
       toast.error(e.message ?? '删除失败');
     }
     setDeleteLoading(false);
+  };
+
+  // 单行反终审：FINALIZED → DRAFT
+  const confirmRevert = async () => {
+    if (!reverting?.settlement_id) return;
+    setRevertLoading(true);
+    try {
+      const res = await fetch('/api/settlements', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settlement_id: reverting.settlement_id, status: 'DRAFT' }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? '反终审失败');
+      toast.success(`已撤销终审：${reverting.employee?.employee_name}（${reverting.employee_id}）恢复为草稿`);
+      setReverting(null);
+      void load();
+    } catch (e: any) {
+      toast.error(e.message ?? '反终审失败');
+    }
+    setRevertLoading(false);
+  };
+
+  // 一键反终审：当前筛选（部门）下的全部已终审 → 草稿
+  const confirmBatchRevert = async () => {
+    if (!finalizedRows.length) return;
+    setBatchRevertLoading(true);
+    try {
+      const res = await fetch('/api/settlements', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: finalizedRows.map((r) => r.settlement_id),
+          status: 'DRAFT',
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? '批量反终审失败');
+      toast.success(`已撤销终审 ${json.data.updated} 人${deptFilter !== 'ALL' ? `（${deptFilter}）` : ''}`);
+      setBatchRevertOpen(false);
+      void load();
+    } catch (e: any) {
+      toast.error(e.message ?? '批量反终审失败');
+    }
+    setBatchRevertLoading(false);
   };
 
   const handleExport = () => {
@@ -431,6 +482,16 @@ export default function SettlementsPage() {
           >
             <BadgeCheck size={15} />
             一键终审{deptFilter !== 'ALL' ? `（${deptFilter}）` : ''}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setBatchRevertOpen(true)}
+            disabled={finalizedRows.length === 0}
+            className="text-amber-600 hover:text-amber-600"
+            title={deptFilter === 'ALL' ? '撤销全部终审' : `撤销 ${deptFilter} 的终审`}
+          >
+            <RotateCcw size={15} />
+            反终审{deptFilter !== 'ALL' ? `（${deptFilter}）` : ''}
           </Button>
           <Button
             variant="ghost"
@@ -571,7 +632,7 @@ export default function SettlementsPage() {
                     >
                       <Eye size={14} />
                     </Button>
-                    {r.status !== 'FINALIZED' && (
+                    {r.status !== 'FINALIZED' ? (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -579,6 +640,16 @@ export default function SettlementsPage() {
                         onClick={() => setFinalizing(r)}
                       >
                         <BadgeCheck size={15} />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-amber-600 hover:text-amber-600 hover:bg-amber-600/10"
+                        onClick={() => setReverting(r)}
+                        title={`撤销 ${r.employee?.employee_name ?? r.employee_id} 的终审`}
+                      >
+                        <RotateCcw size={14} />
                       </Button>
                     )}
                     <Button
@@ -723,6 +794,67 @@ export default function SettlementsPage() {
             >
               <BadgeCheck size={14} className="mr-1" />
               {batchFinalizeLoading ? '终审中...' : `确认终审 ${draftRows.length} 人`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 单行反终审确认 */}
+      <AlertDialog open={!!reverting} onOpenChange={(v) => !v && !revertLoading && setReverting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>撤销终审？</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                将 <strong>{reverting?.employee?.employee_name}</strong>（{reverting?.employee_id}）的结算从
+                「已终审」恢复为「草稿」。恢复草稿后，重新核算将重新计算该员工的薪资。
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={revertLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmRevert();
+              }}
+              disabled={revertLoading}
+              className="bg-amber-600 hover:bg-amber-600/90"
+            >
+              <RotateCcw size={14} className="mr-1" />
+              {revertLoading ? '撤销中...' : '确认撤销'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 一键反终审确认 */}
+      <AlertDialog open={batchRevertOpen} onOpenChange={(v) => !v && !batchRevertLoading && setBatchRevertOpen(v)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>批量撤销终审确认</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                将 <strong>{deptFilter === 'ALL' ? '全部部门' : deptFilter}</strong> 的{' '}
+                <strong>{finalizedRows.length}</strong> 条已终审结算恢复为草稿。
+                <br />
+                恢复后重新核算将重新计算这些员工的薪资。草稿状态的{' '}
+                {filteredRows.length - finalizedRows.length} 条不受影响。
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={batchRevertLoading}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmBatchRevert();
+              }}
+              disabled={batchRevertLoading}
+              className="bg-amber-600 hover:bg-amber-600/90"
+            >
+              <RotateCcw size={14} className="mr-1" />
+              {batchRevertLoading ? '撤销中...' : `确认撤销 ${finalizedRows.length} 人`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
