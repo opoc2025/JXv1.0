@@ -76,6 +76,16 @@ export function aggregateDailyToMonthly(
   });
 }
 
+// 日数据精确计算比率（忽略 Excel 导入的四舍五入字段，消除误差）
+function preciseDailyOrderRate(day: DailyData): number | null {
+  if (!day || day.total_orders == null || Number(day.total_orders) <= 0) return null;
+  return round2((Number(day.recovered_orders) / Number(day.total_orders)) * 100);
+}
+function preciseDailyAmountRate(day: DailyData): number | null {
+  if (!day || day.total_amount == null || Number(day.total_amount) <= 0) return null;
+  return round2((Number(day.recovered_amount) / Number(day.total_amount)) * 100);
+}
+
 // 从月度 / 日度行解析任意指标（按指标库 source_field）
 // 当 forceRow 指定时，优先使用（DAILY_STEP 场景强制取日数据）
 function metricValueOf(
@@ -89,6 +99,13 @@ function metricValueOf(
     ? forceRow === 'DAILY' ? dailyRow : monthlyRow
     : metric.period === 'DAILY' ? dailyRow : monthlyRow;
   if (!row) return null;
+
+  // 🔥 关键修复：日维度比率指标 → 从基数精确算，不依赖 Excel 导入的 target_recovery_rate/amount_achievement_rate（有四舍五入误差）
+  if (row === dailyRow && metric.unit === '%') {
+    if (metric.source_field === 'target_recovery_rate') return preciseDailyOrderRate(row as DailyData);
+    if (metric.source_field === 'amount_achievement_rate') return preciseDailyAmountRate(row as DailyData);
+  }
+
   const raw = (row as any)[metric.source_field];
   if (raw === null || raw === undefined) return null;
   let v = Number(raw);
@@ -121,11 +138,13 @@ function legacyDailyMetric(metric: string | null | undefined, day: DailyData | u
   let v: number | null = null;
   if (metric === 'AMOUNT') v = day.recovered_amount;
   else if (metric === 'ORDERS') v = day.recovered_orders;
-  else if (metric === 'RATE') v = day.target_recovery_rate;
+  // 🔥 关键修复：RATE 从基数精确算，不依赖 Excel 导入值
+  else if (metric === 'RATE') {
+    return preciseDailyOrderRate(day);
+  }
   else return null;
   if (v === null || v === undefined || Number.isNaN(Number(v))) return null;
   v = Number(v);
-  if (metric === 'RATE' && v > 0 && v <= 1.5) v = round2(v * 100);
   return v;
 }
 
@@ -470,18 +489,20 @@ export function calculateSalary(input: EngineInput): Settlement {
         if (existing) {
           existing.recovered_orders += d.recovered_orders;
           existing.recovered_amount = round2(existing.recovered_amount + d.recovered_amount);
-          // 比率类指标：用户说"直接加"
-          if (d.target_recovery_rate != null) {
-            existing.target_recovery_rate = round2((existing.target_recovery_rate ?? 0) + d.target_recovery_rate);
-          }
-          if (d.amount_achievement_rate != null) {
-            existing.amount_achievement_rate = round2((existing.amount_achievement_rate ?? 0) + d.amount_achievement_rate);
-          }
+          // 比率类指标：🔥 汇总后重算，不再直接加（比率不能相加！）
           if (d.total_orders != null) existing.total_orders = (existing.total_orders ?? 0) + d.total_orders;
           if (d.total_amount != null) existing.total_amount = round2((existing.total_amount ?? 0) + d.total_amount);
+          // target_recovery_rate / amount_achievement_rate 不再累加 → 让 preciseDailyOrderRate/preciseDailyAmountRate 从汇总后的基数精确计算
+          existing.target_recovery_rate = null;
+          existing.amount_achievement_rate = null;
         } else {
           byDate.set(d.date, { ...d, stage: vs.label });
         }
+      }
+      // 汇总后精确重算每日比率（合并组跨越多个原始阶段后，比率从汇总基数精确算）
+      for (const d of byDate.values()) {
+        d.target_recovery_rate = preciseDailyOrderRate(d);
+        d.amount_achievement_rate = preciseDailyAmountRate(d);
       }
       days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
     } else {
