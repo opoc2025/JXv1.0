@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatTHB } from '@/lib/format';
 
 type Loan = {
@@ -73,7 +74,7 @@ function formatDateTime(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-type EmpShort = { employee_id: string; employee_name: string; department: string | null };
+type EmpShort = { employee_id: string; employee_name: string; department: string | null; salary_qr_code_url: string | null };
 
 type SubsidyCategory = {
   category_id: number;
@@ -131,6 +132,7 @@ export default function LoansPage() {
   const [newCatName, setNewCatName] = useState('');
   const [deleteSubTarget, setDeleteSubTarget] = useState<Subsidy | null>(null);
   const [deletingSub, setDeletingSub] = useState(false);
+  const [qrOpen, setQrOpen] = useState<EmpShort | null>(null);
 
   useEffect(() => {
     fetchAll();
@@ -145,6 +147,7 @@ export default function LoansPage() {
       employee_id: e.employee_id,
       employee_name: e.employee_name,
       department: e.department,
+      salary_qr_code_url: e.salary_qr_code_url ?? null,
     }));
     list.sort((a, b) => a.employee_id.localeCompare(b.employee_id));
     setEmpList(list);
@@ -420,6 +423,37 @@ export default function LoansPage() {
               ))}
             </select>
           </div>
+          {(() => {
+            const emp = empList.find((e) => e.employee_id === regEmpId);
+            if (!emp) return null;
+            if (!emp.salary_qr_code_url) {
+              return (
+                <div className="text-[11px] text-muted-foreground rounded-md bg-muted/40 px-3 py-2">
+                  该员工未上传工资卡二维码
+                </div>
+              );
+            }
+            return (
+              <div className="flex items-center gap-3 rounded-md border border-border bg-muted/20 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={() => setQrOpen(emp)}
+                  className="shrink-0 hover:opacity-70 transition-opacity"
+                  title="点击放大二维码"
+                >
+                  <img
+                    src={emp.salary_qr_code_url}
+                    alt="工资卡二维码"
+                    className="w-16 h-16 rounded border border-border object-cover"
+                  />
+                </button>
+                <div className="text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">{emp.employee_name} 的工资卡二维码</div>
+                  <div>点击图片可放大查看</div>
+                </div>
+              </div>
+            );
+          })()}
           <div>
             <label className="text-xs text-muted-foreground">借款日期</label>
             <Input type="date" value={regDate} onChange={(e) => setRegDate(e.target.value)} />
@@ -907,6 +941,26 @@ export default function LoansPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 工资卡二维码放大 */}
+      <Dialog open={!!qrOpen} onOpenChange={(o) => !o && setQrOpen(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {qrOpen?.employee_name}（{qrOpen?.employee_id}）工资卡二维码
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-center">
+            {qrOpen?.salary_qr_code_url && (
+              <img
+                src={qrOpen.salary_qr_code_url}
+                alt="工资卡二维码"
+                className="max-w-full w-72 h-72 object-contain rounded-md border border-border"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
