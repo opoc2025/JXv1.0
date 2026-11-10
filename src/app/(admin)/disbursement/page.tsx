@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, memo } from 'react';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -75,6 +75,61 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   PAID: { label: '已发放', cls: 'bg-emerald-500/10 text-emerald-600' },
   CANCELLED: { label: '已取消', cls: 'bg-muted text-muted-foreground' },
 };
+
+/**
+ * 可编辑金额输入框：本地草稿缓冲，失焦/回车才提交。
+ * 避免每键入一个字符就发 PATCH + 整表刷新导致的输入卡顿。
+ */
+const EditableNumber = memo(function EditableNumber({
+  value,
+  onSubmit,
+  disabled,
+  className,
+}: {
+  value: number;
+  onSubmit: (v: number) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState<string>(String(value));
+  const [focused, setFocused] = useState(false);
+
+  // 非聚焦时同步外部值变化（如重新生成快照后）
+  useEffect(() => {
+    if (!focused) setDraft(String(value));
+  }, [value, focused]);
+
+  function commit() {
+    const n = Number(draft);
+    if (draft !== '' && !Number.isNaN(n) && n !== value) {
+      onSubmit(n);
+    } else {
+      setDraft(String(value)); // 空/非法/未变化 → 恢复原值
+    }
+  }
+
+  return (
+    <Input
+      type="number"
+      step="0.01"
+      value={focused ? draft : String(value)}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => {
+        setFocused(true);
+        setDraft(String(value));
+      }}
+      onBlur={() => {
+        setFocused(false);
+        commit();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      disabled={disabled}
+      className={className}
+    />
+  );
+});
 
 export default function DisbursementPage() {
   const { month } = useMonth();
@@ -378,15 +433,28 @@ export default function DisbursementPage() {
     openConfirmAction(ids, 'UNARCHIVE');
   }
 
-  // ============ Modify ============
+  // ============ Modify（由 EditableNumber 失焦/回车触发，一次提交）============
   async function handleModify(rowId: number, field: 'net_pay' | 'loan_deduction', value: number) {
     const table = tab === 'PAYROLL' ? 'payroll_disbursement' : 'reward_disbursement';
-    await fetch('/api/disbursement/modify', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table, id: rowId, [field]: value }),
-    });
-    tab === 'PAYROLL' ? loadPayroll() : loadReward();
+    try {
+      const res = await fetch('/api/disbursement/modify', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table, id: rowId, [field]: value }),
+      });
+      const j = await res.json();
+      if (!res.ok || j.error) throw new Error(j.error || '修改失败');
+      // 精准更新本地行（modify 返回更新后的整行），不整表刷新
+      const updated = j.data;
+      if (tab === 'PAYROLL') {
+        setPayrollRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, ...updated } : r)));
+      } else {
+        setRewardRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, ...updated } : r)));
+      }
+    } catch (e: any) {
+      toast.error(e.message ?? '修改失败');
+      tab === 'PAYROLL' ? loadPayroll() : loadReward(); // 失败时回滚显示
+    }
   }
 
   // ============ Selection ============
@@ -722,13 +790,9 @@ export default function DisbursementPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Input
-                          type="number"
-                          step="0.01"
+                        <EditableNumber
                           value={r.net_pay}
-                          onChange={(e) =>
-                            handleModify(r.id, 'net_pay', Number(e.target.value))
-                          }
+                          onSubmit={(v) => handleModify(r.id, 'net_pay', v)}
                           disabled={r.status === 'PAID'}
                           className={`w-24 h-7 text-xs text-right font-bold ${
                             (r as any).net_pay_override ? 'text-red-600 !bg-red-50' : 'text-emerald-600'
@@ -900,11 +964,9 @@ export default function DisbursementPage() {
                     <TableCell className="text-right text-xs">{formatTHB(r.weekly_total)}</TableCell>
                     <TableCell className="text-right text-xs font-medium">{formatTHB(r.reward_total)}</TableCell>
                     <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        step="0.01"
+                      <EditableNumber
                         value={r.loan_deduction}
-                        onChange={(e) => handleModify(r.id, 'loan_deduction', Number(e.target.value))}
+                        onSubmit={(v) => handleModify(r.id, 'loan_deduction', v)}
                         disabled={r.status === 'PAID'}
                         className={`w-24 h-7 text-xs text-right ${
                           r.loan_deduction > 0 ? 'text-destructive font-semibold' : ''
@@ -912,11 +974,9 @@ export default function DisbursementPage() {
                       />
                     </TableCell>
                     <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        step="0.01"
+                      <EditableNumber
                         value={r.net_pay}
-                        onChange={(e) => handleModify(r.id, 'net_pay', Number(e.target.value))}
+                        onSubmit={(v) => handleModify(r.id, 'net_pay', v)}
                         disabled={r.status === 'PAID'}
                         className={`w-24 h-7 text-xs text-right font-bold ${
                           (r as any).net_pay_override ? 'text-red-600 !bg-red-50' : 'text-emerald-600'
