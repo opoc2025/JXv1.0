@@ -163,6 +163,8 @@ export default function DisbursementPage() {
   const [qrOpen, setQrOpen] = useState<string | null>(null);
   const [deletingRow, setDeletingRow] = useState<{ tab: 'PAYROLL' | 'REWARD'; row: PayrollRow | RewardRow } | null>(null);
   const [refreshing, setRefreshing] = useState<'SALARY' | 'SUBSIDY' | 'LOAN' | null>(null);
+  // 实时未清借款 map（employee_id → 当前未清总额），用于借款抵扣列显示最新状态
+  const [loanOutstanding, setLoanOutstanding] = useState<Map<string, number>>(new Map());
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Load depts + employees + weeks on mount
@@ -242,6 +244,7 @@ export default function DisbursementPage() {
     );
     const j = await r.json();
     setPayrollRows(j.data || []);
+    loadLoanOutstanding();
     loadRemark(payrollPeriod, 'PAYROLL');
   }
 
@@ -252,7 +255,24 @@ export default function DisbursementPage() {
     );
     const j = await r.json();
     setRewardRows(j.data || []);
+    loadLoanOutstanding();
     loadRemark(rewardPeriodKey, 'REWARD');
+  }
+
+  // 拉取各员工当前实时未清借款（借款结清后抵扣列能立即反映）
+  async function loadLoanOutstanding() {
+    try {
+      const r = await fetch('/api/loans?mode=summary');
+      const j = await r.json();
+      const m = new Map<string, number>();
+      for (const s of j.data || []) {
+        const owed = Math.round((Number(s.total_outstanding) || 0) * 100) / 100;
+        if (owed > 0) m.set(s.employee_id, owed);
+      }
+      setLoanOutstanding(m);
+    } catch {
+      // 静默失败：显示退回快照值
+    }
   }
 
   async function loadRemark(pk: string, pt: string) {
@@ -824,24 +844,42 @@ export default function DisbursementPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Input
-                          type="number"
-                          step="0.01"
+                        <EditableNumber
                           value={r.loan_deduction}
-                          onChange={(e) =>
-                            handleModify(r.id, 'loan_deduction', Number(e.target.value))
-                          }
+                          onSubmit={(v) => handleModify(r.id, 'loan_deduction', v)}
                           disabled={r.status === 'PAID'}
                           className={`w-24 h-7 text-xs text-right ${
                             r.loan_deduction > 0 ? 'text-destructive font-semibold' : ''
                           }`}
                         />
                       </div>
-                      {r.loan_remaining_before > 0 && (
-                        <div className="text-[10px] text-muted-foreground text-right">
-                          未清: {formatTHB(r.loan_remaining_before)}
-                        </div>
-                      )}
+                      {(() => {
+                        // 实时借款状态：优先显示当前未清（借款结清后立即反映），快照值兜底
+                        const live = loanOutstanding.get(r.employee_id);
+                        const hadLoan = r.loan_remaining_before > 0 || r.loan_deduction > 0;
+                        if (live !== undefined && live > 0) {
+                          return (
+                            <div className="text-[10px] text-muted-foreground text-right">
+                              未清: {formatTHB(live)}
+                            </div>
+                          );
+                        }
+                        if (live !== undefined && hadLoan) {
+                          return (
+                            <div className="text-[10px] text-emerald-600 text-right font-medium">
+                              ✓ 已结清
+                            </div>
+                          );
+                        }
+                        if (live === undefined && r.loan_remaining_before > 0) {
+                          return (
+                            <div className="text-[10px] text-muted-foreground text-right">
+                              未清: {formatTHB(r.loan_remaining_before)}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -1027,6 +1065,33 @@ export default function DisbursementPage() {
                           r.loan_deduction > 0 ? 'text-destructive font-semibold' : ''
                         }`}
                       />
+                      {(() => {
+                        // 实时借款状态：与工资表一致
+                        const live = loanOutstanding.get(r.employee_id);
+                        const hadLoan = r.loan_remaining_before > 0 || r.loan_deduction > 0;
+                        if (live !== undefined && live > 0) {
+                          return (
+                            <div className="text-[10px] text-muted-foreground text-right">
+                              未清: {formatTHB(live)}
+                            </div>
+                          );
+                        }
+                        if (live !== undefined && hadLoan) {
+                          return (
+                            <div className="text-[10px] text-emerald-600 text-right font-medium">
+                              ✓ 已结清
+                            </div>
+                          );
+                        }
+                        if (live === undefined && r.loan_remaining_before > 0) {
+                          return (
+                            <div className="text-[10px] text-muted-foreground text-right">
+                              未清: {formatTHB(r.loan_remaining_before)}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </TableCell>
                     <TableCell className="text-right">
                       <EditableNumber
