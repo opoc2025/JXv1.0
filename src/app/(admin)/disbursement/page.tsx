@@ -678,7 +678,7 @@ export default function DisbursementPage() {
                 variant="outline"
                 onClick={() => handleRefresh('SALARY')}
                 disabled={hasArchived || refreshing !== null}
-                title="从已终审结算刷新工资数字（新增终审员工会自动插入），保留发放状态与手动修改"
+                title="从已终审结算刷新工资数字（含待发放/已取消行，新增终审员工自动插入），保留发放状态与手动修改"
               >
                 {refreshing === 'SALARY' ? '⏳ 更新中…' : '💵 更新工资'}
               </Button>
@@ -687,7 +687,7 @@ export default function DisbursementPage() {
                 variant="outline"
                 onClick={() => handleRefresh('SUBSIDY')}
                 disabled={hasArchived || refreshing !== null}
-                title="按补贴登记重新汇总当月补贴并重算实发，保留发放状态与手动修改"
+                title="按补贴登记重新汇总当月补贴并重算实发（含待发放/已取消行），保留手动修改"
               >
                 {refreshing === 'SUBSIDY' ? '⏳ 更新中…' : '🎁 更新补贴'}
               </Button>
@@ -696,7 +696,7 @@ export default function DisbursementPage() {
                 variant="outline"
                 onClick={() => handleRefresh('LOAN')}
                 disabled={hasArchived || refreshing !== null}
-                title="按借款记录重算未清余额与抵扣并重算实发，保留发放状态与手动修改"
+                title="按借款记录重算未清余额与抵扣并重算实发（含待发放/已取消行），保留手动修改"
               >
                 {refreshing === 'LOAN' ? '⏳ 更新中…' : '💳 更新借款'}
               </Button>

@@ -10,7 +10,7 @@ import { getSupabaseClient } from "@/storage/database/supabase-client";
  *
  * body: { month, dept?, target }
  * 规则：
- *   - 只更新 PENDING 行（已发放 PAID / 已取消 CANCELLED 不动）
+ *   - 更新 PENDING + CANCELLED 行（已发放 PAID 不动）
  *   - loan_deduction_override / net_pay_override 的行保留手动值
  */
 export async function POST(req: NextRequest) {
@@ -37,17 +37,17 @@ export async function POST(req: NextRequest) {
 		);
 	}
 
-	// 1. 查待发放快照行（只动 PENDING）
+	// 1. 查可更新的快照行（待发放 + 已取消；已发放 PAID 不动）
 	let sq = supabase
 		.from("payroll_disbursement")
 		.select("*")
 		.eq("period_key", month)
-		.eq("status", "PENDING");
+		.in("status", ["PENDING", "CANCELLED"]);
 	if (dept) sq = sq.eq("dept_name", dept);
 	const { data: rows, error: e1 } = await sq;
 	if (e1) return NextResponse.json({ error: e1.message }, { status: 500 });
 	if (!rows || rows.length === 0) {
-		return NextResponse.json({ error: "没有可更新的待发放行（已发放/已取消的行不会被更新）" }, { status: 400 });
+		return NextResponse.json({ error: "没有可更新的行（已发放 PAID 的行不会被更新）" }, { status: 400 });
 	}
 
 	const empIds = rows.map((r: any) => r.employee_id);
