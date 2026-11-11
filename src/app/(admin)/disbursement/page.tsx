@@ -259,15 +259,16 @@ export default function DisbursementPage() {
     loadRemark(rewardPeriodKey, 'REWARD');
   }
 
-  // 拉取各员工当前实时未清借款（借款结清后抵扣列能立即反映）
+  // 拉取各员工当前实时未清借款（含已结清员工，值为 0；借款结清后抵扣列能立即反映）
   async function loadLoanOutstanding() {
     try {
       const r = await fetch('/api/loans?mode=summary');
       const j = await r.json();
       const m = new Map<string, number>();
       for (const s of j.data || []) {
-        const owed = Math.round((Number(s.total_outstanding) || 0) * 100) / 100;
-        if (owed > 0) m.set(s.employee_id, owed);
+        // 有借款记录的员工全部入 map（含未清=0 的已结清员工），
+        // 这样"已结清"能正确显示，而不是误走快照旧值兜底
+        m.set(s.employee_id, Math.round((Number(s.total_outstanding) || 0) * 100) / 100);
       }
       setLoanOutstanding(m);
     } catch {
