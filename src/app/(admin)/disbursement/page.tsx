@@ -162,6 +162,7 @@ export default function DisbursementPage() {
   const [confirmAction, setConfirmAction] = useState<{ kind: 'ACTION' | 'CLEAR'; payload: any } | null>(null);
   const [qrOpen, setQrOpen] = useState<string | null>(null);
   const [deletingRow, setDeletingRow] = useState<{ tab: 'PAYROLL' | 'REWARD'; row: PayrollRow | RewardRow } | null>(null);
+  const [refreshing, setRefreshing] = useState<'SALARY' | 'SUBSIDY' | 'LOAN' | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Load depts + employees + weeks on mount
@@ -298,6 +299,29 @@ export default function DisbursementPage() {
     }
     setMsg({ type: 'ok', text: `快照已生成: ${j.count} 行` });
     tab === 'PAYROLL' ? loadPayroll() : loadReward();
+  }
+
+  // ============ 单项更新（工资/补贴/借款，不重置状态与手动覆盖）============
+  async function handleRefresh(target: 'SALARY' | 'SUBSIDY' | 'LOAN') {
+    setRefreshing(target);
+    setMsg(null);
+    try {
+      const body: any = { month: payrollPeriod, target };
+      if (deptFilter !== 'ALL') body.dept = deptFilter;
+      const r = await fetch('/api/disbursement/payroll/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || '更新失败');
+      const label = target === 'SALARY' ? '工资' : target === 'SUBSIDY' ? '补贴' : '借款';
+      toast.success(`已更新 ${j.updated} 行${label}数据`);
+      loadPayroll();
+    } catch (e: any) {
+      toast.error(e.message ?? '更新失败');
+    }
+    setRefreshing(null);
   }
 
   // ============ Confirm / Archive ============
@@ -627,6 +651,37 @@ export default function DisbursementPage() {
           >
             🔄 从结算生成快照
           </Button>
+          {tab === 'PAYROLL' && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleRefresh('SALARY')}
+                disabled={hasArchived || refreshing !== null}
+                title="从已终审结算刷新工资数字（新增终审员工会自动插入），保留发放状态与手动修改"
+              >
+                {refreshing === 'SALARY' ? '⏳ 更新中…' : '💵 更新工资'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleRefresh('SUBSIDY')}
+                disabled={hasArchived || refreshing !== null}
+                title="按补贴登记重新汇总当月补贴并重算实发，保留发放状态与手动修改"
+              >
+                {refreshing === 'SUBSIDY' ? '⏳ 更新中…' : '🎁 更新补贴'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleRefresh('LOAN')}
+                disabled={hasArchived || refreshing !== null}
+                title="按借款记录重算未清余额与抵扣并重算实发，保留发放状态与手动修改"
+              >
+                {refreshing === 'LOAN' ? '⏳ 更新中…' : '💳 更新借款'}
+              </Button>
+            </>
+          )}
           <Button
             size="sm"
             variant="destructive"
