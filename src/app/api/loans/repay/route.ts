@@ -2,27 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/storage/database/supabase-client";
 
 /**
- * 还款 / 冲减 API
+ * 还款 / 冲减 API（手动还款入口）
  *
- * 两种调用方式：
- * 1. 手工还款:
- *    POST { employee_id, repay_date, amount, loan_ids?: [loan_id], remark? }
- *    → 自动按借款日期顺序冲减 OUTSTANDING 借款
+ * POST { employee_id, repay_date, amount, loan_ids?: [loan_id], remark? }
+ *   → 自动按借款日期顺序冲减 OUTSTANDING 借款，source 固定为 MANUAL
  *
- * 2. 工资/奖励发放自动冲减（由 disbursement API 内部调用，不暴露给前端直接用）
- *    POST { employee_id, repay_date, amount, source: 'PAYROLL_MONTHLY', ref_key, remark }
+ * 注意：工资/奖励发放的自动冲减由 /api/disbursement/confirm 内部实现
+ *（source = PAYROLL_MONTHLY / REWARD_DISBURSEMENT），不经过本接口，
+ * 因此这里强制 source=MANUAL，防止外部伪造系统冲减来源。
  */
 export async function POST(req: NextRequest) {
 	const body = await req.json();
-	const {
-		employee_id,
-		repay_date,
-		amount,
-		loan_ids,
-		remark,
-		source = "MANUAL",
-		ref_key,
-	} = body;
+	const { employee_id, repay_date, amount, loan_ids, remark } = body;
 
 	if (!employee_id || !repay_date || !amount) {
 		return NextResponse.json({ error: "工号、还款日期、金额必填" }, { status: 400 });
@@ -90,14 +81,14 @@ export async function POST(req: NextRequest) {
 			})
 			.eq("loan_id", loan.loan_id);
 
-		// 写冲减日志
+		// 写冲减日志（手动还款来源固定 MANUAL）
 		const logEntry = {
 			loan_id: loan.loan_id,
 			employee_id,
 			repay_date,
 			amount: thisRepay,
-			source,
-			ref_key: ref_key || null,
+			source: "MANUAL",
+			ref_key: null,
 			remark: remark || null,
 		};
 		repayLogs.push(logEntry);
