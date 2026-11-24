@@ -184,7 +184,14 @@ export default function ImportPage() {
     const json = await res.json();
     setImporting(false);
     if (json.success) {
-      toast.success(`成功导入 ${json.data.imported} 条月度考核数据`);
+      const d = json.data;
+      let msg = `成功导入 ${d.imported} 条月度考核数据`;
+      if (d.skipped > 0 && d.skipped_detail?.length > 0) {
+        msg += `（跳过 ${d.skipped} 行：${d.skipped_detail.map((s: any) => `${s.employee_id}×${s.rows}`).join(', ')}）`;
+      } else if (d.skipped > 0) {
+        msg += `（跳过 ${d.skipped} 行）`;
+      }
+      toast.success(msg);
       setMonthlyParsed(null);
       setMonthlyFileName('');
     } else {

@@ -30,6 +30,10 @@ import {
 } from '@/components/ui/table';
 import { formatTHB } from '@/lib/format';
 import { useMonth } from '@/components/month-context';
+import {
+  exportPayrollDisbursement,
+  exportRewardDisbursement,
+} from '@/lib/excel';
 
 type EmpInfo = { employee_id: string; employee_name: string; salary_qr_code_url?: string | null };
 
@@ -405,6 +409,52 @@ export default function DisbursementPage() {
   }
 
   // ============ Clear ============
+  function handleExportPayroll() {
+    if (payrollRows.length === 0) {
+      toast.error('当前周期没有工资发放数据');
+      return;
+    }
+    const rows = payrollRows.map((r) => ({
+      employee_id: r.employee_id,
+      employee_name: empMap.get(r.employee_id)?.employee_name ?? r.employee_id,
+      dept_name: r.dept_name,
+      base_salary: r.base_salary,
+      performance_bonus: r.performance_bonus,
+      full_attendance_bonus: r.full_attendance_bonus,
+      gross_salary: r.gross_salary,
+      commission: r.commission,
+      gross_total: r.gross_total,
+      subsidy_amount: r.subsidy_amount,
+      loan_deduction: r.loan_deduction,
+      net_pay: r.net_pay,
+      status: r.status,
+    }));
+    exportPayrollDisbursement(payrollPeriod, rows);
+    toast.success(`已导出 ${rows.length} 条工资发放记录`);
+  }
+
+  function handleExportReward() {
+    if (rewardRows.length === 0) {
+      toast.error('当前周期没有奖励发放数据');
+      return;
+    }
+    const rows = rewardRows.map((r) => ({
+      employee_id: r.employee_id,
+      employee_name: empMap.get(r.employee_id)?.employee_name ?? r.employee_id,
+      dept_name: r.dept_name,
+      period_type: r.period_type,
+      period_key: r.period_key,
+      daily_total: r.daily_total,
+      weekly_total: r.weekly_total,
+      reward_total: r.reward_total,
+      loan_deduction: r.loan_deduction,
+      net_pay: r.net_pay,
+      status: r.status,
+    }));
+    exportRewardDisbursement(rewardPeriodKey, rewardPeriodType, rows);
+    toast.success(`已导出 ${rows.length} 条奖励发放记录`);
+  }
+
   function handleClear() {
     const table = tab === 'PAYROLL' ? 'payroll_disbursement' : 'reward_disbursement';
     const period_key = tab === 'PAYROLL' ? payrollPeriod : rewardPeriodKey;
@@ -701,7 +751,25 @@ export default function DisbursementPage() {
               >
                 {refreshing === 'LOAN' ? '⏳ 更新中…' : '💳 更新借款'}
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleExportPayroll}
+                title="下载当前工资发放表为 Excel"
+              >
+                📥 下载报表
+              </Button>
             </>
+          )}
+          {tab === 'REWARD' && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportReward}
+              title="下载当前奖励发放表为 Excel"
+            >
+              📥 下载报表
+            </Button>
           )}
           <Button
             size="sm"

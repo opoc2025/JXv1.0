@@ -187,6 +187,142 @@ export function exportSettlement(month: string, rows: ExportSettlementRow[]): vo
   download(wb, `${month}薪资汇总表.xlsx`);
 }
 
+// ---------- 工资发放报表 ----------
+export interface ExportPayrollRow {
+  employee_id: string;
+  employee_name: string;
+  dept_name: string | null;
+  base_salary: number;
+  performance_bonus: number;
+  full_attendance_bonus: number;
+  gross_salary: number;
+  commission: number;
+  gross_total: number;
+  subsidy_amount: number;
+  loan_deduction: number;
+  net_pay: number;
+  status: string;
+}
+
+export function exportPayrollDisbursement(periodKey: string, rows: ExportPayrollRow[]): void {
+  const head = [
+    '工号',
+    '姓名',
+    '部门',
+    '底薪 (฿)',
+    '绩效 (฿)',
+    '全勤 (฿)',
+    '基础工资 (฿)',
+    '提成 (฿)',
+    '工资合计 (฿)',
+    '补贴 (฿)',
+    '借款抵扣 (฿)',
+    '实发金额 (฿)',
+    '状态',
+  ];
+  const body = rows.map((r) => [
+    r.employee_id,
+    r.employee_name,
+    r.dept_name ?? '',
+    r.base_salary,
+    r.performance_bonus,
+    r.full_attendance_bonus,
+    r.gross_salary,
+    r.commission,
+    r.gross_total,
+    r.subsidy_amount,
+    r.loan_deduction,
+    r.net_pay,
+    r.status === 'PAID' ? '已发放' : r.status === 'CANCELLED' ? '已取消' : '待发放',
+  ]);
+  const totals = [
+    '合计',
+    '',
+    '',
+    rows.reduce((s, r) => s + r.base_salary, 0),
+    rows.reduce((s, r) => s + r.performance_bonus, 0),
+    rows.reduce((s, r) => s + r.full_attendance_bonus, 0),
+    rows.reduce((s, r) => s + r.gross_salary, 0),
+    rows.reduce((s, r) => s + r.commission, 0),
+    rows.reduce((s, r) => s + r.gross_total, 0),
+    rows.reduce((s, r) => s + r.subsidy_amount, 0),
+    rows.reduce((s, r) => s + r.loan_deduction, 0),
+    rows.reduce((s, r) => s + r.net_pay, 0),
+    '',
+  ];
+  const ws = sheet(
+    [[`${periodKey} 工资发放表（币种：泰铢 THB）`], head, ...body, totals],
+    [12, 14, 12, 12, 12, 10, 14, 14, 14, 12, 14, 14, 10]
+  );
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '工资发放');
+  download(wb, `${periodKey}工资发放表.xlsx`);
+}
+
+// ---------- 奖励发放报表 ----------
+export interface ExportRewardRow {
+  employee_id: string;
+  employee_name: string;
+  dept_name: string | null;
+  period_type: string;
+  period_key: string;
+  daily_total: number;
+  weekly_total: number;
+  reward_total: number;
+  loan_deduction: number;
+  net_pay: number;
+  status: string;
+}
+
+export function exportRewardDisbursement(periodKey: string, periodType: string, rows: ExportRewardRow[]): void {
+  const head = [
+    '工号',
+    '姓名',
+    '部门',
+    '周期类型',
+    '周期',
+    '日奖励 (฿)',
+    '周奖励 (฿)',
+    '奖励合计 (฿)',
+    '借款抵扣 (฿)',
+    '实发金额 (฿)',
+    '状态',
+  ];
+  const body = rows.map((r) => [
+    r.employee_id,
+    r.employee_name,
+    r.dept_name ?? '',
+    r.period_type === 'WEEKLY' ? '周奖励' : '月奖励',
+    r.period_key,
+    r.daily_total,
+    r.weekly_total,
+    r.reward_total,
+    r.loan_deduction,
+    r.net_pay,
+    r.status === 'PAID' ? '已发放' : r.status === 'CANCELLED' ? '已取消' : '待发放',
+  ]);
+  const totals = [
+    '合计',
+    '',
+    '',
+    '',
+    '',
+    rows.reduce((s, r) => s + r.daily_total, 0),
+    rows.reduce((s, r) => s + r.weekly_total, 0),
+    rows.reduce((s, r) => s + r.reward_total, 0),
+    rows.reduce((s, r) => s + r.loan_deduction, 0),
+    rows.reduce((s, r) => s + r.net_pay, 0),
+    '',
+  ];
+  const ws = sheet(
+    [[`${periodKey} ${periodType === 'WEEKLY' ? '周' : '月'}奖励发放表（币种：泰铢 THB）`], head, ...body, totals],
+    [12, 14, 12, 10, 14, 12, 12, 14, 14, 14, 10]
+  );
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '奖励发放');
+  download(wb, `${periodKey}${periodType === 'WEEKLY' ? '周' : '月'}奖励发放表.xlsx`);
+}
+
 // ---------- 员工档案导入模板 ----------
 export function downloadEmployeeTemplate(): void {
   const rows: SheetData = [
